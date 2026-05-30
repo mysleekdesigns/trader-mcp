@@ -94,6 +94,7 @@ Procedures Claude loads on demand (or you invoke with `/name`). Keep them curren
 | `/run-backtest` | you or Claude | run interpreter → cross-validate vs backtesting.py → parity check → quantstats tear sheet (preloaded into `backtest-engine-engineer`) |
 | `/safety-preflight` | you or Claude | safety checklist before any execution/arming/secret change (preloaded into `risk-safety-engineer`) |
 | `/phase-gate` | **you only** | verify a PRD §6 phase's exit criteria (runs ruff/types/pytest) before advancing |
+| `/next-phase` | you or Claude | orchestrate the next PRD §6 phase: fan out the agent team in parallel → integrate → phase-gate → code-review → check off PRD.md → commit & push (Phase 6+ live trading pauses for human authorization) |
 
 ### Hooks (`.claude/settings.json` → `.claude/hooks/`)
 
