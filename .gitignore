@@ -82,6 +82,9 @@ ipython_config.py
 # uv  (keep uv.lock and .python-version tracked)
 # ─────────────────────────────────────────────────────────────
 .uv/
+# Sandbox-writable uv cache (UV_CACHE_DIR in .claude/settings.local.json) — the
+# default ~/.cache/uv is outside the sandbox write allowlist on this host.
+.uv-cache/
 
 # ─────────────────────────────────────────────────────────────
 # Editors & IDEs
