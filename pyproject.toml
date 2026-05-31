@@ -21,6 +21,7 @@ classifiers = [
 # Pinned to MCP SDK 1.x (locked decision, PRD §4: SDK v2 churn risk).
 # All FastMCP usage is isolated behind trader_mcp.server._sdk.
 dependencies = [
+    "ccxt>=4.4,<5",
     "mcp>=1.27,<2",
     "pydantic>=2",
     "pydantic-settings>=2",
@@ -119,7 +120,8 @@ disallow_untyped_defs = true
 no_implicit_optional = true
 
 [[tool.mypy.overrides]]
-module = ["mcp.*"]
+# ccxt ships no type stubs / py.typed marker; mcp SDK is isolated behind _sdk.py.
+module = ["mcp.*", "ccxt.*"]
 ignore_missing_imports = true
 
 # ─────────────────────────────────────────────────────────────

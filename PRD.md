@@ -190,15 +190,15 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ### Phase 1 — Exchange connectivity & market data (CCXT)
 **Goal:** Read live market data from all four exchanges via one adapter; Bybit validated.
-- [ ] CCXT async adapter + exchange registry (`bybit`, `blofin`, `toobit`, `weex`)
-- [ ] Per-exchange capability map (spot/swap, timeframes, ws support)
-- [ ] Symbol/market normalization (unified `BASE/QUOTE:SETTLE` notation)
-- [ ] Tools: `list_exchanges`, `get_exchange_capabilities`, `search_symbols`, `list_markets`
-- [ ] Tools: `get_ticker`, `get_ohlcv`, `get_order_book`, `get_recent_trades`, `get_funding_rate`
-- [ ] Rate-limit handling, retries/backoff, timeout & error mapping
-- [ ] Read-only API key validation + scope detection
-- [ ] Testnet/sandbox endpoint wiring (where supported)
-- [ ] Deep-validate **Bybit**; smoke-test BloFin/Toobit/WeeX; log known quirks
+- [x] CCXT async adapter + exchange registry (`bybit`, `blofin`, `toobit`, `weex`)
+- [x] Per-exchange capability map (spot/swap, timeframes, ws support)
+- [x] Symbol/market normalization (unified `BASE/QUOTE:SETTLE` notation)
+- [x] Tools: `list_exchanges`, `get_exchange_capabilities`, `search_symbols`, `list_markets`
+- [x] Tools: `get_ticker`, `get_ohlcv`, `get_order_book`, `get_recent_trades`, `get_funding_rate`
+- [x] Rate-limit handling, retries/backoff, timeout & error mapping
+- [x] Read-only API key validation + scope detection
+- [x] Testnet/sandbox endpoint wiring (where supported)
+- [ ] Deep-validate **Bybit**; smoke-test BloFin/Toobit/WeeX; log known quirks _(deferred: this dev host is geo-blocked from the exchanges — CloudFront 403; needs a networked run. Owner: exchange-adapter-engineer. Code path verified offline + against the live 403 error-mapping.)_
 - **Exit:** All market-data tools return correct, normalized data on Bybit; basic parity smoke test on the other three.
 
 ### Phase 2 — Historical data pipeline & cache

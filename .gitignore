@@ -104,3 +104,8 @@ ipython_config.py
 ehthumbs.db
 Thumbs.db
 desktop.ini
+
+# ─────────────────────────────────────────────────────────────
+# Claude Code runtime artifacts (transient; not product config)
+# ─────────────────────────────────────────────────────────────
+.claude/scheduled_tasks.lock

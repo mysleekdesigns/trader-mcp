@@ -1,20 +1,31 @@
-"""FastMCP application factory and Phase 0 admin tools.
+"""FastMCP application factory, admin tools, and lifecycle wiring.
 
 Builds the :class:`FastMCP` server (via the SDK-isolation wrapper in
-:mod:`trader_mcp.server._sdk`) and registers two trivial, fully-typed tools:
-``health_check`` and ``get_server_status``. ``mcp-server-engineer`` extends the
-tool surface from Phase 1; keep this factory as the single registration point.
+:mod:`trader_mcp.server._sdk`) and registers the fully-typed tool surface:
+
+    * the Phase 0 admin tools ``health_check`` and ``get_server_status``;
+    * the Phase 1 market-data & discovery tools (registered via
+      :func:`trader_mcp.server.market_data.register_market_data_tools`).
+
+``build_app`` is the single registration point. It also constructs exactly one
+process-wide :class:`~trader_mcp.exchanges.ExchangeManager` and wires a FastMCP
+lifespan that closes its cached adapters on shutdown -- this keeps the SDK behind
+``_sdk`` (the lifespan is passed through ``create_fastmcp``).
 """
 
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Literal
 
 from trader_mcp import __version__
+from trader_mcp.exchanges import ExchangeManager
 from trader_mcp.logging_config import get_logger
 from trader_mcp.server._sdk import FastMCP, create_fastmcp
+from trader_mcp.server.market_data import register_market_data_tools
 from trader_mcp.server.schemas import HealthCheckResult, ServerStatusResult
 
 logger = get_logger(__name__)
@@ -36,13 +47,32 @@ _SERVER_INSTRUCTIONS = (
 def build_app() -> FastMCP:
     """Build and return the configured FastMCP application.
 
-    Registers the Phase 0 admin tools. The process start time is captured at build
-    time so ``get_server_status`` can report uptime.
+    Registers the Phase 0 admin tools and the Phase 1 market-data tools. Constructs
+    exactly one process-wide :class:`~trader_mcp.exchanges.ExchangeManager`, closed
+    over by the market-data tool callables, and wires a FastMCP lifespan that calls
+    ``manager.aclose_all()`` on shutdown (the transport runners enter/exit the
+    lifespan; ``build_app``/``list_tools`` do not, so no client is created until a
+    tool actually runs). The process start time is captured at build time so
+    ``get_server_status`` can report uptime.
 
     Returns:
         A :class:`FastMCP` instance ready to ``run(transport=...)``.
     """
-    app = create_fastmcp(SERVER_NAME, instructions=_SERVER_INSTRUCTIONS)
+    manager = ExchangeManager()
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastMCP) -> AsyncIterator[None]:
+        """Bracket the serving lifetime; close cached adapters on shutdown."""
+        try:
+            yield
+        finally:
+            await manager.aclose_all()
+
+    app = create_fastmcp(
+        SERVER_NAME,
+        instructions=_SERVER_INSTRUCTIONS,
+        lifespan=_lifespan,
+    )
     started_at = datetime.now(UTC)
     started_monotonic = time.monotonic()
 
@@ -81,5 +111,7 @@ def build_app() -> FastMCP:
             tool_count=len(tools),
         )
 
-    logger.debug("Built FastMCP app '%s' with admin tools registered.", SERVER_NAME)
+    register_market_data_tools(app, manager)
+
+    logger.debug("Built FastMCP app '%s' with admin + market-data tools registered.", SERVER_NAME)
     return app
