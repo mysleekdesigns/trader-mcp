@@ -177,15 +177,15 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ### Phase 0 — Foundations & scaffolding
 **Goal:** A runnable, well-engineered MCP skeleton with one trivial tool.
-- [ ] Initialize repo: `pyproject.toml` (PEP 621), `uv` workspace, `src/trader_mcp/` layout
-- [ ] Tooling: `ruff` (lint+format), `pyright`/`mypy`, `pre-commit` hooks
-- [ ] Test harness: `pytest`, `pytest-asyncio`, coverage config
-- [ ] CI: GitHub Actions (lint, type-check, tests on 3.11/3.12)
-- [ ] MCP server skeleton (FastMCP) over **stdio**; entry point `trader-mcp`
-- [ ] `health_check` + `get_server_status` tools (typed/structured output)
-- [ ] Structured logging with secret redaction; log levels via env
-- [ ] Config/secrets loader (env → `.env` → keyring); error taxonomy & error-to-MCP mapping
-- [ ] `CONTRIBUTING.md`, base `README.md`, license, `.gitignore`, `.env.example`, `.mcp.json` example
+- [x] Initialize repo: `pyproject.toml` (PEP 621), `uv` workspace, `src/trader_mcp/` layout
+- [x] Tooling: `ruff` (lint+format), `pyright`/`mypy`, `pre-commit` hooks
+- [x] Test harness: `pytest`, `pytest-asyncio`, coverage config
+- [x] CI: GitHub Actions (lint, type-check, tests on 3.11/3.12)
+- [x] MCP server skeleton (FastMCP) over **stdio**; entry point `trader-mcp`
+- [x] `health_check` + `get_server_status` tools (typed/structured output)
+- [x] Structured logging with secret redaction; log levels via env
+- [x] Config/secrets loader (env → `.env` → keyring); error taxonomy & error-to-MCP mapping
+- [x] `CONTRIBUTING.md`, base `README.md`, license, `.gitignore`, `.env.example`, `.mcp.json` example
 - **Exit:** `uvx --from . trader-mcp` boots; client lists tools; `health_check` returns OK; CI green.
 
 ### Phase 1 — Exchange connectivity & market data (CCXT)

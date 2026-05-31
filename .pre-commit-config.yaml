@@ -1,0 +1,40 @@
+# Pre-commit hooks for trader-mcp.
+#   Install once:  uv run pre-commit install
+#   Run on all files:  uv run pre-commit run --all-files
+#
+# ruff (lint+format) and pyright (types) run via `uv run` so the EXACT
+# versions/config pinned in this project's environment are used (no drift between
+# pre-commit and `uv run ...`). The full test suite runs in CI.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-lint
+        name: ruff (lint, autofix)
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff (format)
+        entry: uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: pyright
+        name: pyright (type check)
+        entry: uv run pyright
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        require_serial: true
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: detect-private-key

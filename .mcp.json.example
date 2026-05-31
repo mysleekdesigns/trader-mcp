@@ -1,0 +1,21 @@
+{
+  "//": "Example MCP client config for trader-mcp. Copy the 'trader-mcp' block into your client's MCP config (e.g. .mcp.json, Claude Code, Cursor, Codex). Do NOT commit real API keys; prefer .env / OS keyring over inlining secrets here.",
+  "mcpServers": {
+    "trader-mcp": {
+      "command": "uvx",
+      "args": ["trader-mcp"],
+      "env": {
+        "TRADER_MCP_LOG_LEVEL": "INFO",
+        "TRADER_MCP_DEFAULT_EXCHANGE": "bybit"
+      }
+    },
+    "trader-mcp-local": {
+      "//": "Run from a local checkout instead of the published package.",
+      "command": "uvx",
+      "args": ["--from", "/absolute/path/to/trader-mcp", "trader-mcp"],
+      "env": {
+        "TRADER_MCP_LOG_LEVEL": "DEBUG"
+      }
+    }
+  }
+}

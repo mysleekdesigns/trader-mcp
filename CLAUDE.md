@@ -34,7 +34,7 @@ Tools are grouped: connectivity/admin, market data & discovery, historical data 
 
 ## Intended commands (once Phase 0 scaffolding exists)
 
-These don't exist yet — establish them in Phase 0, then keep this section accurate.
+Established in Phase 0 — keep this section accurate as the project grows.
 
 ```bash
 uv sync                      # install deps into .venv
@@ -47,6 +47,9 @@ uv run pyright               # type-check (or: uv run mypy src)
 
 uv run pytest                # full test suite
 uv run pytest path/to/test_file.py::test_name   # a single test
+uv run pytest --cov          # with coverage
+
+uv run pre-commit install    # enable ruff (lint+format) + pyright on commit
 ```
 
 Keep `uv.lock` and `.python-version` tracked; everything in `.gitignore` (caches, `.env`, `*.duckdb`, `*.parquet`, `backtests/`, `reports/`, `logs/`) stays out of git.
