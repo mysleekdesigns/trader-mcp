@@ -27,12 +27,21 @@ dependencies = [
     "pydantic-settings>=2",
 ]
 
+# Optional extras. ``socks`` enables a SOCKS proxy for the CCXT (aiohttp) client
+# so a geo-blocked host can reach the exchanges; install with `uv sync --extra socks`.
+# HTTPS proxying needs no extra dependency (aiohttp supports it natively).
+[project.optional-dependencies]
+socks = ["aiohttp_socks"]
+
 [project.urls]
 Homepage = "https://github.com/mysleekdesigns/trader-mcp"
 Repository = "https://github.com/mysleekdesigns/trader-mcp"
 
 [project.scripts]
 trader-mcp = "trader_mcp.server:main"
+# Human-readable live-validation CLI: hits real exchange public endpoints to
+# deep-validate Bybit + smoke-test the others. Honors proxy/timeout settings.
+trader-mcp-validate = "trader_mcp.validate:main"
 
 [dependency-groups]
 dev = [
@@ -133,6 +142,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers --strict-config"
 filterwarnings = ["error"]
+markers = [
+    "live: needs real exchange network access; opt-in, excluded unless --live or TRADER_MCP_LIVE_TESTS=1",
+]
 
 [tool.coverage.run]
 branch = true

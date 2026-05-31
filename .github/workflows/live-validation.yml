@@ -1,0 +1,81 @@
+name: Live Validation
+
+# Opt-in, manual-only live validation against REAL exchange public endpoints.
+# Separate from ci.yml and NEVER part of the merge gate: it can be flaky (real
+# network) and may be unreachable from the runner's region. Read-only / public data
+# only — no API keys are used.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: live-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-validate:
+    name: live exchange validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Step 1 — reachability probe. Decides whether GitHub's runners can reach
+      # Bybit at all. If not (and no proxy secret is configured), warn and stop
+      # WITHOUT failing the job (geo-block is an environment fact, not a code bug).
+      # NOTE: the probe checks only the public /v5/market/time endpoint; a 200 here
+      # confirms reachability, not that every market-data path works. Do NOT add
+      # `-v` or `set -x` to this step — either would print the proxy URL (with
+      # userinfo) to the log; GitHub masks the registered secret value, but keep the
+      # surface minimal regardless.
+      - name: Probe Bybit reachability
+        id: probe
+        env:
+          # Optional repo secret; route the probe through an allowed region if set.
+          TRADER_MCP_HTTPS_PROXY: ${{ secrets.TRADER_MCP_HTTPS_PROXY }}
+        run: |
+          set +e
+          if [ -n "$TRADER_MCP_HTTPS_PROXY" ]; then
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --proxy "$TRADER_MCP_HTTPS_PROXY" https://api.bybit.com/v5/market/time)
+          else
+            code=$(curl -sS -o /dev/null -w "%{http_code}" https://api.bybit.com/v5/market/time)
+          fi
+          echo "Bybit /v5/market/time HTTP status: ${code:-000}"
+          if [ "$code" = "200" ]; then
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Bybit not reachable from this runner (HTTP ${code:-000}). Skipping live validation. Set the TRADER_MCP_HTTPS_PROXY repo secret to route through an allowed region."
+          fi
+
+      - name: Install uv
+        if: steps.probe.outputs.reachable == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        if: steps.probe.outputs.reachable == 'true'
+        run: uv sync --frozen
+
+      # Step 2 — the actual validation. The CLI gates on Bybit (non-zero exit on a
+      # Bybit deep-validation failure); the live pytest suite asserts invariants.
+      - name: Validate (CLI report)
+        if: steps.probe.outputs.reachable == 'true'
+        env:
+          TRADER_MCP_HTTPS_PROXY: ${{ secrets.TRADER_MCP_HTTPS_PROXY }}
+        run: uv run trader-mcp-validate --json live-report.json
+
+      - name: Live test suite
+        if: steps.probe.outputs.reachable == 'true'
+        env:
+          TRADER_MCP_HTTPS_PROXY: ${{ secrets.TRADER_MCP_HTTPS_PROXY }}
+        run: uv run pytest tests/live --live -q
+
+      - name: Upload validation report
+        if: always() && steps.probe.outputs.reachable == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-validation-report
+          path: |
+            live-report.json
+            notes/exchange-quirks.md
+          if-no-files-found: warn

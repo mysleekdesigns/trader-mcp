@@ -25,6 +25,7 @@ a lightweight fake satisfies it.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
@@ -33,6 +34,7 @@ import ccxt
 import ccxt.async_support as ccxt_async
 
 from trader_mcp.config import ExchangeId, Settings, get_settings
+from trader_mcp.errors import ConfigError
 from trader_mcp.exchanges.errors import TRANSIENT_CCXT_ERRORS, map_ccxt_error
 from trader_mcp.exchanges.models import (
     CredentialStatus,
@@ -77,6 +79,54 @@ def _create_ccxt_client(exchange_id: str, config: dict[str, Any]) -> Any:
         An instantiated ``ccxt.async_support.<exchange_id>`` client.
     """
     return getattr(ccxt_async, exchange_id)(config)
+
+
+def _aiohttp_socks_available() -> bool:
+    """Return whether the optional ``aiohttp_socks`` dependency is importable.
+
+    SOCKS proxying through CCXT's async (aiohttp) client requires ``aiohttp_socks``.
+    Kept as a tiny module-level seam so the SOCKS-dependency guard in
+    :func:`_apply_network_settings` is unit-testable without installing the extra.
+    """
+    return importlib.util.find_spec("aiohttp_socks") is not None
+
+
+def _apply_network_settings(config: dict[str, Any], settings: Settings) -> None:
+    """Inject the request timeout and optional proxy into a CCXT constructor config.
+
+    Always sets ``timeout`` (milliseconds). Wires ``httpsProxy`` or ``socksProxy``
+    from settings so a geo-blocked host can reach the exchanges. Proxy URLs are
+    :class:`~pydantic.SecretStr`; their plaintext is revealed only here, at the
+    construction call site, and is never logged.
+
+    Args:
+        config: The CCXT constructor config dict to mutate in place.
+        settings: Resolved application settings carrying timeout/proxy values.
+
+    Raises:
+        ConfigError: if both an HTTPS and a SOCKS proxy are configured (CCXT permits
+            only one), or if a SOCKS proxy is configured without the optional
+            ``aiohttp_socks`` dependency installed.
+    """
+    config["timeout"] = settings.request_timeout_ms
+
+    https_proxy = settings.https_proxy
+    socks_proxy = settings.socks_proxy
+    if https_proxy is not None and socks_proxy is not None:
+        raise ConfigError(
+            "Set only one of TRADER_MCP_HTTPS_PROXY / TRADER_MCP_SOCKS_PROXY; "
+            "CCXT does not allow both proxy types at once."
+        )
+    if https_proxy is not None:
+        config["httpsProxy"] = https_proxy.get_secret_value()
+    elif socks_proxy is not None:
+        if not _aiohttp_socks_available():
+            raise ConfigError(
+                "A SOCKS proxy is configured (TRADER_MCP_SOCKS_PROXY) but the optional "
+                "'aiohttp_socks' dependency is not installed. Install it with: "
+                "uv sync --extra socks"
+            )
+        config["socksProxy"] = socks_proxy.get_secret_value()
 
 
 async def _sleep(seconds: float) -> None:
@@ -162,6 +212,10 @@ class ExchangeAdapter:
             api_key, api_secret = creds.reveal()
             config["apiKey"] = api_key
             config["secret"] = api_secret
+
+        # Timeout + optional proxy (revealed here only; never logged). Lets a
+        # geo-blocked host reach the exchanges over an HTTPS/SOCKS proxy or VPN.
+        _apply_network_settings(config, settings)
 
         client = _create_ccxt_client(ccxt_id, config)
 

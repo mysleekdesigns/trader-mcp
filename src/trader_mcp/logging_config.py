@@ -69,6 +69,18 @@ _KEYED_SECRET_RE = re.compile(
     r"(?P<val>(?!\*\*\*REDACTED)[^\s,;\"'}\)&]+)"
 )
 
+# URL-embedded credentials: ``scheme://user:pass@host`` -> ``scheme://***@host``.
+# A proxy URL (TRADER_MCP_HTTPS_PROXY/SOCKS_PROXY) may embed ``user:pass@`` and can
+# surface verbatim in a CCXT proxy/connection error message. The whole userinfo is
+# redacted (the username can be sensitive too). The password class is deliberately
+# broad -- ``[^\s@]*`` matches everything up to the ``@`` terminator, including the
+# ``/ + =`` of a base64 secret -- because we must never enumerate the charset and
+# leave a gap; a too-narrow class is exactly how a base64 password would slip past.
+# Over-redacting a contrived ``scheme://x:y/z@w`` log line is acceptable; leaking a
+# credential is not. Runs first so the full userinfo collapses before other rules
+# nibble at it, and is idempotent (the placeholder has no ``:`` before the ``@``).
+_URL_USERINFO_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)[^\s@/]+:[^\s@]*@")
+
 # Long opaque high-entropy-looking tokens (>= 32 chars of base64/hex-ish text).
 # This is the catch-all for the longer secrets the four target exchanges issue
 # (Bybit/BloFin/Toobit/WeeX API *secrets* are typically >= 32 chars). Shorter
@@ -87,10 +99,12 @@ def _redact_auth_header(match: re.Match[str]) -> str:
 def redact(text: str) -> str:
     """Return ``text`` with any detected secret material replaced.
 
-    Applies, in order: ``Authorization`` headers, bare bearer tokens, keyed
-    secrets (``api_key=...``), then long opaque tokens. Safe to call on arbitrary
-    strings; the placeholder is never re-redacted on a second pass.
+    Applies, in order: URL-embedded credentials (``scheme://user:pass@``),
+    ``Authorization`` headers, bare bearer tokens, keyed secrets (``api_key=...``),
+    then long opaque tokens. Safe to call on arbitrary strings; the placeholder is
+    never re-redacted on a second pass.
     """
+    text = _URL_USERINFO_RE.sub(rf"\1{REDACTION_PLACEHOLDER}@", text)
     text = _AUTH_HEADER_RE.sub(_redact_auth_header, text)
     text = _BEARER_RE.sub(rf"\1{REDACTION_PLACEHOLDER}", text)
     text = _KEYED_SECRET_RE.sub(

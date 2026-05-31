@@ -47,6 +47,32 @@ _REDACT_CASES = [
         "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6",
         True,
     ),
+    # Proxy URLs (TRADER_MCP_HTTPS_PROXY/SOCKS_PROXY) may embed user:pass@ and can
+    # surface in a CCXT proxy/connection error. The whole userinfo must be scrubbed
+    # regardless of password length or special chars (short pw would slip past the
+    # >= 32-char long-token rule).
+    (
+        "proxy_url_short_pw",
+        "connect via http://user:hunter2@proxy.example:8080 failed",
+        "hunter2",
+        True,
+    ),
+    (
+        "proxy_url_special_pw",
+        "proxy error: socks5://alice:p4ss-w0rd.x@10.0.0.1:1080 refused",
+        "p4ss-w0rd.x",
+        True,
+    ),
+    # Base64 secrets routinely contain / + = -- the password class MUST cover them,
+    # or the credential slips past the rule unredacted.
+    (
+        "proxy_url_base64_pw",
+        "connect via http://user:aB3/xY9z+Cg==@proxy.example:8080 refused",
+        "aB3/xY9z+Cg==",
+        True,
+    ),
+    # A proxy URL with NO credentials carries no secret -> must pass through intact.
+    ("proxy_url_no_creds", "using http://proxy.example:8080 now", None, False),
     ("safe_text", "fetching BTC/USDT ticker on bybit", None, False),
     ("short_id", "order id ABC123 placed", None, False),
 ]
@@ -71,6 +97,14 @@ def test_redact_table(label: str, text: str, secret: str | None, expect_placehol
 def test_redact_is_idempotent() -> None:
     """Re-running redaction must not double-scrub an already-redacted value."""
     once = redact("api_key=supersecretvalue")
+    assert redact(once) == once
+
+
+def test_redact_proxy_url_is_idempotent() -> None:
+    """A redacted proxy URL must survive a second redaction pass unchanged."""
+    once = redact("http://user:hunter2@proxy.example:8080")
+    assert "hunter2" not in once
+    assert "user" not in once.split("@")[0].split("//")[1]  # userinfo collapsed
     assert redact(once) == once
 
 

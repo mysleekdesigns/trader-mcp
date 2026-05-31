@@ -20,7 +20,7 @@ import functools
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from trader_mcp.errors import ConfigError
@@ -142,6 +142,34 @@ class Settings(BaseSettings):
 
     #: Default exchange used when a tool call omits one.
     default_exchange: ExchangeId = Field(default="bybit")
+
+    #: Per-request timeout (milliseconds) handed to the CCXT client. Applies to
+    #: every exchange call; a generous default tolerates slow public endpoints.
+    request_timeout_ms: int = Field(default=30_000, gt=0)
+
+    #: Optional HTTPS proxy URL for CCXT (env ``TRADER_MCP_HTTPS_PROXY``). Lets a
+    #: geo-blocked host reach the exchanges. A proxy URL may embed ``user:pass@``,
+    #: so it is a :class:`SecretStr`: never logged, revealed only at the CCXT
+    #: construction call site in :func:`trader_mcp.exchanges.adapter._apply_network_settings`.
+    https_proxy: SecretStr | None = None
+
+    #: Optional SOCKS proxy URL for CCXT (env ``TRADER_MCP_SOCKS_PROXY``). Mutually
+    #: exclusive with :attr:`https_proxy`; requires the optional ``aiohttp_socks``
+    #: dependency (``uv sync --extra socks``). Also a :class:`SecretStr`.
+    socks_proxy: SecretStr | None = None
+
+    @field_validator("https_proxy", "socks_proxy", mode="before")
+    @classmethod
+    def _empty_proxy_to_none(cls, value: object) -> object:
+        """Treat an empty/whitespace-only proxy value as unset (``None``).
+
+        An undefined env var that still expands to ``""`` (e.g. an unset GitHub
+        Actions secret referenced in a workflow) must not inject an empty proxy into
+        the CCXT client. Runs before ``SecretStr`` coercion.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     def credentials_for(self, exchange: ExchangeId) -> ExchangeCredentials:
         """Resolve read-only credentials for ``exchange`` across all sources.
