@@ -59,7 +59,7 @@ class ExchangesResult(_StrictModel):
     """Result of ``list_exchanges``: the static supported-exchange registry."""
 
     exchanges: list[ExchangeInfo] = Field(
-        description="Metadata for every supported exchange (Bybit, the reference, first)."
+        description="Metadata for every supported exchange (Coinbase, the reference, first)."
     )
     count: int = Field(description="Number of supported exchanges.")
 

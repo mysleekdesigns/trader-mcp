@@ -9,9 +9,9 @@ INVARIANT (safety): this module is the single, isolated home for secret handling
 secret-resolution logic here so it remains auditable. Nothing in this module logs
 or prints a secret value.
 
-The four target exchanges (Bybit, BloFin, Toobit, WeeX) each have an optional
-read-only API key/secret pair. Phase 0 only loads and types them; scope detection
-and validation land in Phase 1.
+The four target exchanges (Coinbase, Kraken, Gemini, Crypto.com) each have an
+optional read-only API key/secret pair. Phase 0 only loads and types them; scope
+detection and validation land in Phase 1.
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from trader_mcp.errors import ConfigError
 
-#: Supported exchange identifiers (CCXT ids). Bybit is the reference exchange.
-ExchangeId = Literal["bybit", "blofin", "toobit", "weex"]
+#: Supported exchange identifiers (CCXT ids). Coinbase is the reference exchange.
+ExchangeId = Literal["coinbase", "kraken", "gemini", "cryptocom"]
 
 
 class KeyScope(StrEnum):
@@ -54,7 +54,7 @@ def keyring_lookup(service: str, username: str) -> str | None:
     The lookup never logs the requested or returned value.
 
     Args:
-        service: Keyring service name, e.g. ``"trader-mcp:bybit"``.
+        service: Keyring service name, e.g. ``"trader-mcp:coinbase"``.
         username: Logical key name, e.g. ``"api_key"``.
 
     Returns:
@@ -74,7 +74,7 @@ class ExchangeCredentials(BaseSettings):
     """Optional read-only credentials for a single exchange.
 
     Loaded from ``<EXCHANGE>_API_KEY`` / ``<EXCHANGE>_API_SECRET`` (e.g.
-    ``BYBIT_API_KEY``). Falls back to the OS keyring when not present in the
+    ``COINBASE_API_KEY``). Falls back to the OS keyring when not present in the
     environment or ``.env``. All credentials default to read-only scope in v1.
 
     Secret fields are :class:`SecretStr`, so ``repr``/``str``/``model_dump`` /
@@ -141,7 +141,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
 
     #: Default exchange used when a tool call omits one.
-    default_exchange: ExchangeId = Field(default="bybit")
+    default_exchange: ExchangeId = Field(default="coinbase")
 
     #: Per-request timeout (milliseconds) handed to the CCXT client. Applies to
     #: every exchange call; a generous default tolerates slow public endpoints.

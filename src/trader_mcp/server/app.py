@@ -39,7 +39,7 @@ TRANSPORT: Literal["stdio"] = "stdio"
 _SERVER_INSTRUCTIONS = (
     "trader-mcp is an AI-native crypto trading platform. It exposes typed tools to "
     "research market data, author declarative strategies, backtest on real cached "
-    "data, and paper/testnet trade across Bybit, BloFin, Toobit, and WeeX. "
+    "data, and paper/testnet trade across Coinbase, Kraken, Gemini, and Crypto.com. "
     "Execution is dry-run and safe-by-default; real-money trading is gated."
 )
 

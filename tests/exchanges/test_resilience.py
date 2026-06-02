@@ -29,10 +29,10 @@ async def test_transient_then_success_is_retried(
     client = patch_client()
     n = adapter_module.MAX_RETRIES  # 3
     client.transient["fetch_ticker"] = (ccxt_error("network", leak=False), n - 1)
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
-        ticker = await adapter.fetch_ticker("BTC/USDT")
-        assert ticker.symbol == "BTC/USDT"
+        ticker = await adapter.fetch_ticker("BTC/USD")
+        assert ticker.symbol == "BTC/USD"
         # Called exactly N times (n-1 failures + 1 success).
         assert client.calls["fetch_ticker"] == n
         # Backoff was awaited between attempts (n-1 times).
@@ -47,10 +47,10 @@ async def test_persistent_transient_exhausts_and_raises(
     """A persistently-transient fault exhausts MAX_RETRIES then raises ExchangeError."""
     client = patch_client()
     client.raise_on["fetch_ticker"] = ccxt_error("rate_limit", leak=True)
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         with pytest.raises(ExchangeError) as excinfo:
-            await adapter.fetch_ticker("BTC/USDT")
+            await adapter.fetch_ticker("BTC/USD")
         assert excinfo.value.details["kind"] == "rate_limit"
         assert_no_secret(excinfo.value.message)
         assert SECRET_TOKEN not in str(excinfo.value)
@@ -65,10 +65,10 @@ async def test_backoff_is_exponential(
 ) -> None:
     client = patch_client()
     client.raise_on["fetch_ticker"] = ccxt_error("network", leak=False)
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         with pytest.raises(ExchangeError):
-            await adapter.fetch_ticker("BTC/USDT")
+            await adapter.fetch_ticker("BTC/USD")
     base = adapter_module.BACKOFF_BASE_SECONDS
     # delays: base * 2**0, base * 2**1, ... for MAX_RETRIES-1 backoffs.
     expected = [base * (2**i) for i in range(adapter_module.MAX_RETRIES - 1)]
@@ -82,7 +82,7 @@ async def test_non_transient_is_not_retried(
     """A BadSymbol is non-transient: mapped immediately, called exactly once."""
     client = patch_client()
     client.raise_on["fetch_ticker"] = ccxt_error("bad_symbol", leak=True)
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         with pytest.raises(ExchangeError) as excinfo:
             await adapter.fetch_ticker("NOPE/NOPE")
@@ -99,10 +99,10 @@ async def test_auth_error_is_not_retried(
 ) -> None:
     client = patch_client()
     client.raise_on["fetch_order_book"] = ccxt_error("auth", leak=False)
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         with pytest.raises(ExchangeError) as excinfo:
-            await adapter.fetch_order_book("BTC/USDT")
+            await adapter.fetch_order_book("BTC/USD")
         assert excinfo.value.details["kind"] == "auth"
         assert client.calls["fetch_order_book"] == 1
         assert no_sleep == []
@@ -115,8 +115,8 @@ async def test_raw_ccxt_exception_never_escapes(
     """Every fetch maps failures to ExchangeError -- a raw ccxt error must not escape."""
     client = patch_client()
     client.raise_on["fetch_funding_rate"] = ccxt_error("not_supported", leak=False)
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         with pytest.raises(ExchangeError) as excinfo:
-            await adapter.fetch_funding_rate("BTC/USDT:USDT")
+            await adapter.fetch_funding_rate("BTC/USD:USD")
         assert excinfo.value.details["kind"] == "not_supported"

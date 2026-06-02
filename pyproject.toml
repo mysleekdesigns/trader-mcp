@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Simon Lacey", email = "simon@dashboardhosting.com" }]
-keywords = ["mcp", "trading", "crypto", "ccxt", "backtesting", "bybit"]
+keywords = ["mcp", "trading", "crypto", "ccxt", "backtesting", "coinbase"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
@@ -40,7 +40,7 @@ Repository = "https://github.com/mysleekdesigns/trader-mcp"
 [project.scripts]
 trader-mcp = "trader_mcp.server:main"
 # Human-readable live-validation CLI: hits real exchange public endpoints to
-# deep-validate Bybit + smoke-test the others. Honors proxy/timeout settings.
+# deep-validate Coinbase + smoke-test the others. Honors proxy/timeout settings.
 trader-mcp-validate = "trader_mcp.validate:main"
 
 [dependency-groups]

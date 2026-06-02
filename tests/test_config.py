@@ -36,15 +36,15 @@ def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TRADER_MCP_DEFAULT_EXCHANGE", raising=False)
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert settings.log_level == "INFO"
-    assert settings.default_exchange == "bybit"
+    assert settings.default_exchange == "coinbase"
 
 
 def test_env_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TRADER_MCP_LOG_LEVEL", "DEBUG")
-    monkeypatch.setenv("TRADER_MCP_DEFAULT_EXCHANGE", "blofin")
+    monkeypatch.setenv("TRADER_MCP_DEFAULT_EXCHANGE", "kraken")
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert settings.log_level == "DEBUG"
-    assert settings.default_exchange == "blofin"
+    assert settings.default_exchange == "kraken"
 
 
 def test_dotenv_file_is_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -52,24 +52,24 @@ def test_dotenv_file_is_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv("TRADER_MCP_LOG_LEVEL", raising=False)
     monkeypatch.delenv("TRADER_MCP_DEFAULT_EXCHANGE", raising=False)
     env_file = tmp_path / ".env"
-    env_file.write_text("TRADER_MCP_LOG_LEVEL=WARNING\nTRADER_MCP_DEFAULT_EXCHANGE=toobit\n")
+    env_file.write_text("TRADER_MCP_LOG_LEVEL=WARNING\nTRADER_MCP_DEFAULT_EXCHANGE=gemini\n")
 
     settings = Settings(_env_file=str(env_file))  # type: ignore[call-arg]
     assert settings.log_level == "WARNING"
-    assert settings.default_exchange == "toobit"
+    assert settings.default_exchange == "gemini"
 
 
 def test_env_takes_precedence_over_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Process environment must win over a value in the ``.env`` file."""
     env_file = tmp_path / ".env"
-    env_file.write_text("TRADER_MCP_LOG_LEVEL=WARNING\nTRADER_MCP_DEFAULT_EXCHANGE=toobit\n")
+    env_file.write_text("TRADER_MCP_LOG_LEVEL=WARNING\nTRADER_MCP_DEFAULT_EXCHANGE=gemini\n")
     # Env overrides the .env-provided log level but not the exchange.
     monkeypatch.setenv("TRADER_MCP_LOG_LEVEL", "DEBUG")
     monkeypatch.delenv("TRADER_MCP_DEFAULT_EXCHANGE", raising=False)
 
     settings = Settings(_env_file=str(env_file))  # type: ignore[call-arg]
     assert settings.log_level == "DEBUG"  # env wins
-    assert settings.default_exchange == "toobit"  # falls back to .env
+    assert settings.default_exchange == "gemini"  # falls back to .env
 
 
 # --------------------------------------------------------------------------- #
@@ -102,10 +102,10 @@ def test_config_error_message_is_redacted(monkeypatch: pytest.MonkeyPatch) -> No
 # Credentials resolution
 # --------------------------------------------------------------------------- #
 def test_credentials_from_env_take_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("BYBIT_API_KEY", "env-key")
-    monkeypatch.setenv("BYBIT_API_SECRET", "env-secret")
+    monkeypatch.setenv("COINBASE_API_KEY", "env-key")
+    monkeypatch.setenv("COINBASE_API_SECRET", "env-secret")
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    creds = settings.credentials_for("bybit")
+    creds = settings.credentials_for("coinbase")
     assert creds.is_configured
     assert creds.api_key is not None
     assert creds.api_key.get_secret_value() == "env-key"
@@ -113,23 +113,23 @@ def test_credentials_from_env_take_precedence(monkeypatch: pytest.MonkeyPatch) -
 
 def test_credentials_unconfigured_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing optional secrets must not crash; the credential is just unconfigured."""
-    for var in ("WEEX_API_KEY", "WEEX_API_SECRET"):
+    for var in ("CRYPTOCOM_API_KEY", "CRYPTOCOM_API_SECRET"):
         monkeypatch.delenv(var, raising=False)
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    creds = settings.credentials_for("weex")
+    creds = settings.credentials_for("cryptocom")
     assert not creds.is_configured
 
 
 def test_keyring_fallback_when_env_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("TOOBIT_API_KEY", raising=False)
-    monkeypatch.delenv("TOOBIT_API_SECRET", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_SECRET", raising=False)
 
     def fake_keyring(service: str, username: str) -> str | None:
         return f"kr-{username}"
 
     monkeypatch.setattr("trader_mcp.config.keyring_lookup", fake_keyring)
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    creds = settings.credentials_for("toobit")
+    creds = settings.credentials_for("gemini")
     assert creds.is_configured
     assert creds.api_key is not None
     assert creds.api_key.get_secret_value() == "kr-api_key"
@@ -140,7 +140,7 @@ def test_keyring_lookup_returns_none_when_package_absent(
 ) -> None:
     """The optional ``keyring`` package is not installed -> ImportError branch -> None."""
     monkeypatch.setitem(sys.modules, "keyring", None)  # force ImportError on import
-    assert keyring_lookup("trader-mcp:bybit", "api_key") is None
+    assert keyring_lookup("trader-mcp:coinbase", "api_key") is None
 
 
 def test_keyring_lookup_delegates_to_installed_keyring(
@@ -150,7 +150,7 @@ def test_keyring_lookup_delegates_to_installed_keyring(
     fake = types.ModuleType("keyring")
     fake.get_password = lambda service, username: f"stored-{username}"  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "keyring", fake)
-    assert keyring_lookup("trader-mcp:bybit", "api_key") == "stored-api_key"
+    assert keyring_lookup("trader-mcp:coinbase", "api_key") == "stored-api_key"
 
 
 def test_keyring_lookup_swallows_backend_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -162,20 +162,20 @@ def test_keyring_lookup_swallows_backend_errors(monkeypatch: pytest.MonkeyPatch)
 
     fake.get_password = boom  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "keyring", fake)
-    assert keyring_lookup("trader-mcp:bybit", "api_key") is None
+    assert keyring_lookup("trader-mcp:coinbase", "api_key") is None
 
 
 def test_env_beats_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
     """When both env and keyring have a value, env wins (precedence order)."""
-    monkeypatch.setenv("BYBIT_API_KEY", "env-key")
-    monkeypatch.setenv("BYBIT_API_SECRET", "env-secret")
+    monkeypatch.setenv("COINBASE_API_KEY", "env-key")
+    monkeypatch.setenv("COINBASE_API_SECRET", "env-secret")
 
     def fake_keyring(service: str, username: str) -> str | None:  # pragma: no cover
         return "keyring-should-not-be-used"
 
     monkeypatch.setattr("trader_mcp.config.keyring_lookup", fake_keyring)
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    creds = settings.credentials_for("bybit")
+    creds = settings.credentials_for("coinbase")
     assert creds.api_key is not None
     assert creds.api_key.get_secret_value() == "env-key"
 
@@ -239,8 +239,8 @@ def test_credentials_default_to_read_only() -> None:
 def test_resolved_credentials_are_read_only_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("BYBIT_API_KEY", "k")
-    monkeypatch.setenv("BYBIT_API_SECRET", "s")
-    creds = Settings(_env_file=None).credentials_for("bybit")  # type: ignore[call-arg]
+    monkeypatch.setenv("COINBASE_API_KEY", "k")
+    monkeypatch.setenv("COINBASE_API_SECRET", "s")
+    creds = Settings(_env_file=None).credentials_for("coinbase")  # type: ignore[call-arg]
     assert creds.scope is KeyScope.READ_ONLY
     assert creds.can_trade is False

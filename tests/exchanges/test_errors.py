@@ -24,10 +24,10 @@ from trader_mcp.exchanges.errors import TRANSIENT_CCXT_ERRORS
 @pytest.mark.parametrize(("kind", "expected"), ERROR_KIND_CASES)
 def test_map_ccxt_error_classifies_kind(kind: str, expected: str) -> None:
     exc = ccxt_error(kind)
-    mapped = map_ccxt_error(exc, exchange="bybit", op="fetch_ticker")
+    mapped = map_ccxt_error(exc, exchange="coinbase", op="fetch_ticker")
     assert isinstance(mapped, ExchangeError)
     assert mapped.details["kind"] == expected
-    assert mapped.details["exchange"] == "bybit"
+    assert mapped.details["exchange"] == "coinbase"
     assert mapped.details["op"] == "fetch_ticker"
 
 
@@ -35,7 +35,7 @@ def test_map_ccxt_error_classifies_kind(kind: str, expected: str) -> None:
 def test_map_ccxt_error_redacts_message_and_details(kind: str, _expected: str) -> None:
     """The secret-shaped token must not survive into message or details."""
     exc = ccxt_error(kind, leak=True)
-    mapped = map_ccxt_error(exc, exchange="bybit", op="fetch_balance")
+    mapped = map_ccxt_error(exc, exchange="coinbase", op="fetch_balance")
 
     assert_no_secret(mapped.message)
     assert_no_secret(mapped.details["cause"])
@@ -48,17 +48,19 @@ def test_map_ccxt_error_redacts_message_and_details(kind: str, _expected: str) -
 def test_rate_limit_takes_priority_over_network() -> None:
     """RateLimitExceeded subclasses NetworkError in CCXT; it must classify as rate_limit."""
     assert issubclass(ccxt.RateLimitExceeded, ccxt.NetworkError)
-    mapped = map_ccxt_error(ccxt.RateLimitExceeded("slow down"), exchange="bybit", op="fetch_ohlcv")
+    mapped = map_ccxt_error(
+        ccxt.RateLimitExceeded("slow down"), exchange="coinbase", op="fetch_ohlcv"
+    )
     assert mapped.details["kind"] == "rate_limit"
 
 
 def test_permission_denied_maps_to_auth() -> None:
-    mapped = map_ccxt_error(ccxt.PermissionDenied("no"), exchange="bybit", op="x")
+    mapped = map_ccxt_error(ccxt.PermissionDenied("no"), exchange="coinbase", op="x")
     assert mapped.details["kind"] == "auth"
 
 
 def test_non_ccxt_exception_maps_to_generic_exchange() -> None:
-    mapped = map_ccxt_error(RuntimeError("boom"), exchange="bybit", op="x")
+    mapped = map_ccxt_error(RuntimeError("boom"), exchange="coinbase", op="x")
     assert mapped.details["kind"] == "exchange"
 
 

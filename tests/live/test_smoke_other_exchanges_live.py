@@ -1,8 +1,8 @@
-"""Live smoke test for the non-reference exchanges: BloFin, Toobit, WeeX.
+"""Live smoke test for the non-reference exchanges: Kraken, Gemini, Crypto.com.
 
 Opt-in only (``--live`` / ``TRADER_MCP_LIVE_TESTS=1``). These prove basic
 connectivity (load markets + ticker + ohlcv) without asserting the deep invariants
-reserved for Bybit. Capability gaps are *tolerated*: a path the exchange does not
+reserved for Coinbase. Capability gaps are *tolerated*: a path the exchange does not
 support is recorded as a ``skip`` (a quirk to log in ``notes/exchange-quirks.md``)
 rather than a hard failure.
 """
@@ -16,7 +16,7 @@ from trader_mcp.exchanges import ExchangeManager
 
 pytestmark = pytest.mark.live
 
-OTHER_EXCHANGES = ["blofin", "toobit", "weex"]
+OTHER_EXCHANGES = ["kraken", "gemini", "cryptocom"]
 
 
 @pytest.fixture(params=OTHER_EXCHANGES)

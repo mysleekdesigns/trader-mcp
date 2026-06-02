@@ -83,7 +83,7 @@ _URL_USERINFO_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)[^\s@/]+:[^\s@]*@")
 
 # Long opaque high-entropy-looking tokens (>= 32 chars of base64/hex-ish text).
 # This is the catch-all for the longer secrets the four target exchanges issue
-# (Bybit/BloFin/Toobit/WeeX API *secrets* are typically >= 32 chars). Shorter
+# (Coinbase/Kraken/Gemini/Crypto.com API *secrets* are typically >= 32 chars). Shorter
 # bare API *keys* are caught only when they appear next to a sensitive key name
 # or auth header above; the structural defense for those is :class:`SecretStr`.
 _LONG_TOKEN_RE = re.compile(r"\b[A-Za-z0-9_\-]{32,}\b")

@@ -24,8 +24,8 @@ async def test_get_caches_one_adapter_per_key(
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", make_create_factory(clients=clients))
     manager = ExchangeManager()
     try:
-        a1 = await manager.get("bybit")
-        a2 = await manager.get("bybit")
+        a1 = await manager.get("coinbase")
+        a2 = await manager.get("coinbase")
         assert a1 is a2  # cached
         assert isinstance(a1, ExchangeAdapter)
     finally:
@@ -39,8 +39,8 @@ async def test_get_distinct_adapters_for_testnet_variants(
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", make_create_factory(clients=clients))
     manager = ExchangeManager()
     try:
-        live = await manager.get("bybit", testnet=False)
-        testnet = await manager.get("bybit", testnet=True)
+        live = await manager.get("coinbase", testnet=False)
+        testnet = await manager.get("coinbase", testnet=True)
         assert live is not testnet
         assert live.testnet is False
         assert testnet.testnet is True
@@ -55,16 +55,16 @@ async def test_get_distinct_adapters_per_exchange(
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", make_create_factory(clients=clients))
     manager = ExchangeManager()
     try:
-        bybit = await manager.get("bybit")
-        blofin = await manager.get("blofin")
-        assert bybit is not blofin
-        assert bybit.exchange_id == "bybit"
-        assert blofin.exchange_id == "blofin"
+        coinbase = await manager.get("coinbase")
+        kraken = await manager.get("kraken")
+        assert coinbase is not kraken
+        assert coinbase.exchange_id == "coinbase"
+        assert kraken.exchange_id == "kraken"
     finally:
         await manager.aclose_all()
 
 
-@pytest.mark.parametrize("bad", ["binance", "", "BYBIT", "okx"])
+@pytest.mark.parametrize("bad", ["binance", "", "COINBASE", "okx"])
 async def test_get_unsupported_raises_validation_error(bad: str) -> None:
     manager = ExchangeManager()
     try:
@@ -81,18 +81,18 @@ async def test_aclose_all_closes_clients_and_is_idempotent(
     clients = [FakeCcxt() for _ in range(4)]
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", make_create_factory(clients=clients))
     manager = ExchangeManager()
-    a_bybit = await manager.get("bybit")
-    a_blofin = await manager.get("blofin")
+    a_coinbase = await manager.get("coinbase")
+    a_kraken = await manager.get("kraken")
 
     await manager.aclose_all()
     # Both underlying fake clients were closed.
-    assert a_bybit._client.closed is True  # type: ignore[attr-defined]
-    assert a_blofin._client.closed is True  # type: ignore[attr-defined]
+    assert a_coinbase._client.closed is True  # type: ignore[attr-defined]
+    assert a_kraken._client.closed is True  # type: ignore[attr-defined]
 
     # Safe to call twice (no error, no re-close storm).
     await manager.aclose_all()
 
     # After close, get() rebuilds a fresh adapter (cache was cleared).
-    fresh = await manager.get("bybit")
-    assert fresh is not a_bybit
+    fresh = await manager.get("coinbase")
+    assert fresh is not a_coinbase
     await manager.aclose_all()

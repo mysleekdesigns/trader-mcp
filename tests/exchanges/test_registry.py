@@ -1,6 +1,6 @@
 """Tests for the static exchange registry (no network, no fakes).
 
-Validates the supported-exchange list, ordering (Bybit first / reference), the
+Validates the supported-exchange list, ordering (Coinbase first / reference), the
 ``is_supported`` guard, and ``get_exchange_meta`` typing.
 """
 
@@ -16,7 +16,7 @@ from trader_mcp.exchanges import (
 )
 from trader_mcp.exchanges.registry import ccxt_id_for
 
-EXPECTED_IDS = ["bybit", "blofin", "toobit", "weex"]
+EXPECTED_IDS = ["coinbase", "kraken", "gemini", "cryptocom"]
 
 
 def test_list_supported_returns_all_four_in_order() -> None:
@@ -32,11 +32,17 @@ def test_list_supported_returns_typed_models() -> None:
             info.name = "mutated"  # type: ignore[misc]
 
 
-def test_bybit_is_the_reference_certified_exchange() -> None:
+def test_coinbase_is_the_reference_certified_exchange() -> None:
     infos = {i.exchange: i for i in list_supported()}
-    assert infos["bybit"].is_reference is True
-    assert infos["bybit"].reliability_tier == "certified"
-    for other in ("blofin", "toobit", "weex"):
+    # Coinbase is the reference exchange and is certified.
+    assert infos["coinbase"].is_reference is True
+    assert infos["coinbase"].reliability_tier == "certified"
+    # Kraken is ALSO certified (both are CCXT-Certified per PRD §10) but not the
+    # reference exchange.
+    assert infos["kraken"].is_reference is False
+    assert infos["kraken"].reliability_tier == "certified"
+    # Gemini and Crypto.com are supported (non-reference).
+    for other in ("gemini", "cryptocom"):
         assert infos[other].is_reference is False
         assert infos[other].reliability_tier == "supported"
 
@@ -50,8 +56,10 @@ def test_is_supported_true_for_known(exchange: str) -> None:
     assert is_supported(exchange) is True
 
 
-@pytest.mark.parametrize("exchange", ["", "binance", "BYBIT", "kraken", "okx"])
+@pytest.mark.parametrize("exchange", ["", "binance", "COINBASE", "bybit", "okx"])
 def test_is_supported_false_for_unknown(exchange: str) -> None:
+    # "bybit" is a now-dropped offshore id; "COINBASE" is the wrong case (ids are
+    # lowercase). Both must be rejected.
     assert is_supported(exchange) is False
 
 

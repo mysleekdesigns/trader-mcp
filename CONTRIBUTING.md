@@ -65,7 +65,7 @@ tests/               # pytest + pytest-asyncio
 
 ## Lane discipline
 
-Each area has an owner (see the agent table in [`CLAUDE.md`](./CLAUDE.md)). Edit your owned modules; negotiate cross-area contracts through the orchestrator rather than reaching into another area's files. **Bybit is validated first** in every phase before fanning out to BloFin/Toobit/WeeX.
+Each area has an owner (see the agent table in [`CLAUDE.md`](./CLAUDE.md)). Edit your owned modules; negotiate cross-area contracts through the orchestrator rather than reaching into another area's files. **Coinbase is validated first** in every phase before fanning out to Kraken/Gemini/Crypto.com.
 
 ## Commits & PRs
 

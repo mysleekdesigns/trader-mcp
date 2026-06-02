@@ -28,7 +28,8 @@ from trader_mcp.config import ExchangeId
 MarketType = Literal["spot", "swap"]
 
 #: Reliability tier of a supported exchange. ``certified`` is the reference
-#: exchange (Bybit), validated first in every phase; the rest are ``supported``.
+#: exchange (Coinbase), validated first in every phase; Kraken is also
+#: ``certified``. Gemini and Crypto.com are ``supported``.
 ReliabilityTier = Literal["certified", "supported"]
 
 

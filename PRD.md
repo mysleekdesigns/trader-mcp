@@ -1,7 +1,7 @@
 # trader-mcp — Product Requirements Document
 
 > A terminal-first, AI-native crypto trading platform delivered as a **Model Context Protocol (MCP) server**.
-> Connect your AI assistant (Claude Code, Codex, Cursor) over MCP, **prompt your way to a strategy**, **backtest it on real market data**, and **deploy to Bybit, BloFin, Toobit, or WeeX** — all from your editor or chat.
+> Connect your AI assistant (Claude Code, Codex, Cursor) over MCP, **prompt your way to a strategy**, **backtest it on real market data**, and **deploy to Coinbase, Kraken, Gemini, or Crypto.com** — all from your editor or chat.
 
 - **Status:** Draft v1 — approved plan, pre-implementation
 - **Last updated:** 2026-05-30
@@ -18,8 +18,8 @@ Trading tooling today is either (a) heavyweight GUIs/platforms or (b) raw exchan
 
 ### Why now
 - The **MCP ecosystem is mature and stable** (`@modelcontextprotocol` SDKs, stdio transport used by Claude Code/Cursor/Codex, typed structured outputs).
-- **CCXT unifies all four target exchanges** behind one interface for both REST and WebSocket (CCXT Pro), spot and perpetual swaps — so a single integration layer covers Bybit, BloFin, Toobit, and WeeX.
-- Exchanges are **actively courting AI traders** (e.g. WeeX's AI-trading program), validating the "vibe trader" audience.
+- **CCXT unifies all four target exchanges** behind one interface for both REST and WebSocket (CCXT Pro), spot and perpetual swaps — so a single integration layer covers Coinbase, Kraken, Gemini, and Crypto.com, all legally accessible to US persons.
+- Exchanges are **actively courting AI traders** (e.g. Coinbase's and Kraken's developer platforms and AI-agent toolkits), validating the "vibe trader" audience.
 - No existing MCP server combines **multi-exchange execution + real-data backtesting + prompt-driven strategy authoring** — clear whitespace.
 
 ---
@@ -38,7 +38,7 @@ Trading tooling today is either (a) heavyweight GUIs/platforms or (b) raw exchan
 
 ### Goals (v1)
 - One MCP server, installable via `uvx trader-mcp`, that works with Claude Code, Cursor, and Codex.
-- Unified market data + history across Bybit/BloFin/Toobit/WeeX via CCXT.
+- Unified market data + history across Coinbase/Kraken/Gemini/Crypto.com via CCXT.
 - A **declarative strategy spec** + template library that an AI can author and validate.
 - A backtesting engine that runs the *same* strategy interpreter used for live, producing trustworthy metrics + tear sheets on **real cached data**.
 - Paper trading and exchange **testnet** execution.
@@ -60,7 +60,8 @@ Trading tooling today is either (a) heavyweight GUIs/platforms or (b) raw exchan
 | **Runtime / distribution** | **Python 3.12 + `uv`, shipped via `uvx trader-mcp`** | Best-in-class backtesting ecosystem (vectorbt, backtesting.py, quantstats, indicators); CCXT's reference implementation; near-zero install. Server language is invisible to the AI client. |
 | **Strategy representation** | **Declarative typed spec + template library** | Deterministic, safe (no arbitrary code execution), and guarantees **backtest↔live parity** via one shared interpreter. |
 | **v1 safety posture** | **Backtest + paper + testnet only** | No real-money orders until a dedicated guardrailed phase. Fastest path to a safe, demoable product. |
-| **Exchange rollout** | **Exchange-agnostic on CCXT; validate Bybit first** | All four available at the adapter level; deep-validate Bybit (CCXT-Certified) first, then certify BloFin, Toobit, WeeX. |
+| **Exchange rollout** | **Exchange-agnostic on CCXT; US-accessible venues only; validate Coinbase first** | All four available at the adapter level; deep-validate **Coinbase** (US-regulated, CCXT-Certified) first, then certify Kraken, Gemini, Crypto.com. US-legal perps via Coinbase Derivatives / Kraken Futures. |
+| **Jurisdiction** | **US-accessible exchanges only (v1)** | Target venues must be legal for US persons; offshore exchanges (Bybit/BloFin/Toobit/WeeX) are explicitly out of scope for v1. US venues quote USD/USDC; perps limited to CFTC-regulated products. |
 
 ---
 
@@ -93,7 +94,7 @@ Trading tooling today is either (a) heavyweight GUIs/platforms or (b) raw exchan
 └───────────────┬───────────────────────────────────────────────┘
                 │
                 ▼
-   Bybit · BloFin · Toobit · WeeX   (REST + WebSocket via CCXT)
+   Coinbase · Kraken · Gemini · Crypto.com   (REST + WebSocket via CCXT)
 ```
 
 ### 5.1 Core stack
@@ -141,8 +142,8 @@ Grouped; names indicative. All return structured, typed outputs.
 A versioned Pydantic schema, e.g.:
 ```yaml
 name: rsi-mean-reversion-btc
-exchange: bybit
-symbol: BTC/USDT:USDT      # perpetual swap
+exchange: coinbase
+symbol: BTC/USD            # spot (US venues quote USD/USDC, not USDT)
 timeframe: 1h
 indicators:
   - {id: rsi, kind: rsi, length: 14}
@@ -153,7 +154,7 @@ exit:
   long:  "rsi > 50"
   short: "rsi < 50"
 position_sizing: {mode: percent_equity, value: 5}
-risk: {stop_loss_pct: 2, take_profit_pct: 4, max_leverage: 3}
+risk: {stop_loss_pct: 2, take_profit_pct: 4, max_leverage: 3}   # max_leverage applies to US-legal perps (e.g. exchange: kraken, symbol: BTC/USD:USD on Kraken Futures)
 fees: {taker: 0.00055, maker: 0.0002}
 ```
 - Rule expressions are parsed into a **safe, sandboxed expression evaluator** (whitelisted indicators/operators — no arbitrary Python).
@@ -161,6 +162,7 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ### 5.4 Safety model (cross-cutting)
 - **Key scoping:** separate read-only vs trade-enabled keys; validate scope on connect; refuse trade ops with read-only keys.
+- **Jurisdiction / geo-eligibility:** v1 targets only exchanges legally available to US persons (Coinbase, Kraken, Gemini, Crypto.com). Validate that the configured exchange **and market type** are permitted before placing/arming orders; surface a jurisdiction disclaimer. US perps are limited to CFTC-regulated products (Coinbase Derivatives, Kraken Futures); spot quotes are USD/USDC.
 - **Dry-run default:** `place_order`/`deploy_strategy` simulate unless explicitly armed.
 - **Arming:** real-money live requires `arm_live_trading` + per-strategy risk limits set.
 - **Risk limits engine:** max position size, max daily loss, leverage caps, max order notional, max open positions.
@@ -173,7 +175,7 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ## 6. Phased Delivery Plan (with checklists)
 
-> Convention: each phase ends with an **Exit criteria** gate. Bybit is the reference exchange validated first in every relevant phase.
+> Convention: each phase ends with an **Exit criteria** gate. Coinbase is the reference exchange validated first in every relevant phase.
 
 ### Phase 0 — Foundations & scaffolding
 **Goal:** A runnable, well-engineered MCP skeleton with one trivial tool.
@@ -189,8 +191,8 @@ fees: {taker: 0.00055, maker: 0.0002}
 - **Exit:** `uvx --from . trader-mcp` boots; client lists tools; `health_check` returns OK; CI green.
 
 ### Phase 1 — Exchange connectivity & market data (CCXT)
-**Goal:** Read live market data from all four exchanges via one adapter; Bybit validated.
-- [x] CCXT async adapter + exchange registry (`bybit`, `blofin`, `toobit`, `weex`)
+**Goal:** Read live market data from all four exchanges via one adapter; Coinbase validated.
+- [x] CCXT async adapter + exchange registry (`coinbase`, `kraken`, `gemini`, `cryptocom`)
 - [x] Per-exchange capability map (spot/swap, timeframes, ws support)
 - [x] Symbol/market normalization (unified `BASE/QUOTE:SETTLE` notation)
 - [x] Tools: `list_exchanges`, `get_exchange_capabilities`, `search_symbols`, `list_markets`
@@ -198,8 +200,8 @@ fees: {taker: 0.00055, maker: 0.0002}
 - [x] Rate-limit handling, retries/backoff, timeout & error mapping
 - [x] Read-only API key validation + scope detection
 - [x] Testnet/sandbox endpoint wiring (where supported)
-- [ ] Deep-validate **Bybit**; smoke-test BloFin/Toobit/WeeX; log known quirks _(deferred: this dev host is geo-blocked from the exchanges — CloudFront 403; needs a networked run. Owner: exchange-adapter-engineer. Code path verified offline + against the live 403 error-mapping.)_
-- **Exit:** All market-data tools return correct, normalized data on Bybit; basic parity smoke test on the other three.
+- [ ] Deep-validate **Coinbase**; smoke-test Kraken/Gemini/Crypto.com; log known quirks _(code follow-on **done**: registry ids, reference, default exchange, CLI, live suite, and CI probe are all re-pointed offshore→US, with Coinbase the reference and USD quoting; only the networked run remains — deferred to a US-eligible, non-sandboxed host, as this build environment has no exchange network. Owner: exchange-adapter-engineer.)_
+- **Exit:** All market-data tools return correct, normalized data on Coinbase; basic parity smoke test on Kraken/Gemini/Crypto.com.
 
 ### Phase 2 — Historical data pipeline & cache
 **Goal:** Reliable, resumable local history for real-data backtests.
@@ -209,7 +211,7 @@ fees: {taker: 0.00055, maker: 0.0002}
 - [ ] Data-quality checks: gap detection, dedupe, monotonic timestamps, timezone normalization
 - [ ] Multi-timeframe support + resampling
 - [ ] Expose cached datasets as MCP **resources**
-- **Exit:** Can sync ≥1 year of BTC/USDT 1h on Bybit, detect/repair gaps, and serve it to the backtester.
+- **Exit:** Can sync ≥1 year of BTC/USD 1h on Coinbase, detect/repair gaps, and serve it to the backtester.
 
 ### Phase 3 — Strategy spec & template library
 **Goal:** An AI can author and validate a strategy via prompts.
@@ -233,19 +235,19 @@ fees: {taker: 0.00055, maker: 0.0002}
 - [ ] `optimize_strategy`: parameter sweep + **walk-forward** (vectorbt/Optuna); look-ahead/leakage guards
 - [ ] Cross-validate engine vs `backtesting.py` on reference strategies (parity test)
 - [ ] Deterministic/reproducible runs (seeded, pinned data snapshot)
-- **Exit:** Backtest a template strategy on cached Bybit data; metrics match the cross-validation engine within tolerance; report returned to the AI.
+- **Exit:** Backtest a template strategy on cached Coinbase data; metrics match the cross-validation engine within tolerance; report returned to the AI.
 
 ### Phase 5 — Paper trading & testnet execution
 **Goal:** Run a strategy live against simulated and testnet venues using the same interpreter.
 - [ ] Live data feed via CCXT Pro WebSockets (candles/trades/order book)
 - [ ] Strategy runtime consuming streaming bars through the **same interpreter** as backtest
 - [ ] Paper broker: simulated fills, balances, positions, PnL
-- [ ] Exchange **testnet** execution (Bybit/BloFin where available)
+- [ ] Exchange **testnet** execution (Coinbase sandbox / Kraken demo where available)
 - [ ] Tools: `start_session` (paper|testnet), `place_order`, `cancel_order`, `get_open_orders`, `get_positions`, `get_balance`
 - [ ] Tools: `deploy_strategy`, `stop_strategy`, `get_session_status`
 - [ ] Order/position reconciliation; idempotent client order IDs
 - [ ] Portfolio/analytics tools: `get_portfolio`, `get_pnl`, `get_trade_history`
-- **Exit:** Deploy a strategy in paper mode and on Bybit testnet; orders/positions/PnL reconcile correctly.
+- **Exit:** Deploy a strategy in paper mode and on Coinbase sandbox; orders/positions/PnL reconcile correctly.
 
 ### Phase 6 — Live trading guardrails (real money — gated)
 **Goal:** Enable real-money execution safely, exchange by exchange.
@@ -254,9 +256,9 @@ fees: {taker: 0.00055, maker: 0.0002}
 - [ ] Dry-run default for all live order paths; explicit opt-in required
 - [ ] `kill_switch` (cancel-all + halt per-exchange/global); circuit breakers
 - [ ] Full audit log of order intents/results (redacted); optional notifications/alerts (webhook/desktop)
-- [ ] Live certification per exchange: **Bybit → BloFin → Toobit → WeeX** (min-size real-order tests, quirk handling)
+- [ ] Live certification per exchange: **Coinbase → Kraken → Gemini → Crypto.com** (min-size real-order tests, quirk handling); US-legal perps (Coinbase Derivatives / Kraken Futures) certified separately under CFTC rules
 - [ ] Security review of secret handling & key scoping
-- **Exit:** A min-size real order places & cancels correctly on Bybit with all guardrails enforced; runbook documented.
+- **Exit:** A min-size real order places & cancels correctly on Coinbase with all guardrails enforced; runbook documented.
 
 ### Phase 7 — Hardening, docs & distribution
 **Goal:** Ship a polished, documented, installable product.
@@ -271,7 +273,7 @@ fees: {taker: 0.00055, maker: 0.0002}
 ### Phase 8 — Future / optional
 - [ ] Remote **Streamable HTTP** transport + auth for multi-user/hosted deployment
 - [ ] Opt-in **sandboxed code-strategies** (beyond declarative spec)
-- [ ] Additional exchanges (CCXT makes this incremental)
+- [ ] Additional exchanges (CCXT makes this incremental) — incl. offshore venues (Bybit/BloFin/Toobit/WeeX) for non-US users, gated by jurisdiction
 - [ ] Advanced analytics (Monte Carlo, regime detection), strategy portfolios, scheduling/cron deploys
 - [ ] Optional lightweight web dashboard for monitoring
 
@@ -279,7 +281,7 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ## 7. Success Metrics
 - **Activation:** time from `uvx trader-mcp` to first successful backtest < 10 minutes.
-- **Reliability:** market-data + backtest tools >99% success on Bybit; backtest results reproducible run-to-run.
+- **Reliability:** market-data + backtest tools >99% success on Coinbase; backtest results reproducible run-to-run.
 - **Parity:** paper/live behavior matches backtest interpreter on identical inputs (automated parity tests pass).
 - **Safety:** zero unintended real-money orders; 100% of live order paths gated by arming + risk limits.
 - **Breadth:** all four exchanges pass the market-data + paper certification suite.
@@ -290,13 +292,13 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Toobit/WeeX less battle-tested in CCXT than Bybit | Bugs/edge cases in data or orders | Validate Bybit first; per-exchange certification suite; quirk registry; graceful capability degradation |
+| Gemini/Crypto.com less algo-battle-tested in CCXT than Coinbase/Kraken | Bugs/edge cases in data or orders | Validate Coinbase first; per-exchange certification suite; quirk registry; graceful capability degradation |
 | Backtest overfitting / look-ahead bias | Misleading results, user losses | Walk-forward, out-of-sample, leakage guards, prominent caveats in reports |
 | Backtest↔live divergence | Live behaves unlike tests | Single shared interpreter; automated parity tests |
 | Secret/key leakage | Account compromise | Keyring/env only, never logged, scope detection, security review (Phase 6) |
 | Real-money mistakes | Financial loss | Backtest/paper/testnet-first; dry-run default; arming; risk limits; kill switch; idempotency |
 | Exchange rate limits / downtime | Failures, partial state | Backoff, reconnects, reconciliation, circuit breakers |
-| Regulatory/legal | Liability | Clear "not financial advice" disclaimers; user assumes all risk; no custody of funds |
+| Regulatory/legal (incl. US jurisdiction) | Liability; trading on a non-permitted venue | US-accessible exchanges only (v1); geo-eligibility checks; US perps limited to CFTC-regulated products; clear "not financial advice" disclaimers; user assumes all risk; no custody of funds |
 | MCP SDK v2 churn (stable Q1 2026) | Rework | Pin v1.x (production-recommended); isolate SDK behind an internal interface |
 
 ---
@@ -306,17 +308,19 @@ fees: {taker: 0.00055, maker: 0.0002}
 - Strategy storage location convention (project-local `./strategies` vs user config dir).
 - Notification channels for Phase 6 (webhook, desktop, email?).
 - Whether to expose CCXT-Pro live streams as MCP resources/subscriptions in v1 or defer to Phase 5.
+- US perpetual-futures support — in scope via CFTC-regulated Coinbase Derivatives / Kraken Futures (2026 rule change); confirm exact CCXT coverage and unified symbols per venue.
+- Per-US-state restrictions (some tokens / leverage unavailable in NY, WA, etc.) — detect and surface to the user.
 
 ---
 
 ## 10. Appendix — Confirmed exchange/CCXT support
-From the live CCXT exchange registry:
+From the live CCXT exchange registry (US-accessible venues only):
 
-| Exchange | CCXT id | API | Reliability tier | WebSocket (CCXT Pro) |
-|---|---|---|---|---|
-| Bybit | `bybit` | v5 | **CCXT Certified** | ✅ |
-| BloFin | `blofin` | v1 | Supported | ✅ |
-| Toobit | `toobit` | v1 (spot+futures) | Supported | ✅ |
-| WeeX | `weex` | v3 | Supported | ✅ |
+| Exchange | CCXT id(s) | US markets | US status / regulator | US-legal perps | Reliability tier | WebSocket (CCXT Pro) |
+|---|---|---|---|---|---|---|
+| Coinbase | `coinbase` | Spot (USD/USDC) | US-regulated (SEC/CFTC) | Coinbase Derivatives (CFTC) — emerging | **CCXT Certified** (reference) | ✅ |
+| Kraken | `kraken`, `krakenfutures` | Spot (USD/USDC); futures | US-regulated; CFTC futures | Kraken Futures (`krakenfutures`) | **CCXT Certified** | ✅ |
+| Gemini | `gemini` | Spot (USD/USDC) | US-regulated (NYDFS) | None (US) | Supported | ✅ |
+| Crypto.com | `cryptocom` | Spot (USD/USDC) | US MSB (app) | Restricted for US | Supported | ✅ |
 
-All four are centralized exchanges supporting unified OHLCV history, `createOrder` execution, spot + perpetual swaps, and WebSocket streaming through one CCXT integration.
+All four are US-accessible, CCXT-supported centralized exchanges offering unified OHLCV history, `createOrder` execution, and WebSocket streaming through one CCXT integration. US venues quote in USD/USDC (not USDT); US-legal perpetual/futures trading is limited to CFTC-regulated products (Coinbase Derivatives, Kraken Futures). Pin exact CCXT ids (e.g. `coinbase` vs `coinbaseexchange`/`coinbaseadvanced`, and `krakenfutures`) against the installed CCXT version at implementation.

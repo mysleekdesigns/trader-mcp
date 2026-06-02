@@ -35,9 +35,9 @@ FIXED_DT = datetime.fromtimestamp(FIXED_MS / 1000, tz=UTC)
 
 
 async def _adapter(patch_client: Callable[..., FakeCcxt], **kwargs: object) -> ExchangeAdapter:
-    """Build a bybit adapter wrapping a freshly-installed fake client."""
+    """Build a coinbase adapter wrapping a freshly-installed fake client."""
     patch_client(**kwargs)
-    return await ExchangeAdapter.create("bybit")
+    return await ExchangeAdapter.create("coinbase")
 
 
 # --------------------------------------------------------------------------- #
@@ -69,8 +69,8 @@ async def test_capabilities_maps_has_and_timeframes(
     async with adapter:
         caps = adapter.capabilities()
         assert isinstance(caps, ExchangeCapabilities)
-        assert caps.exchange == "bybit"
-        assert caps.ccxt_id == "bybit"
+        assert caps.exchange == "coinbase"
+        assert caps.ccxt_id == "coinbase"
         assert caps.supports_ohlcv is True
         assert caps.supports_order_book is True
         assert caps.supports_trades is True
@@ -121,8 +121,8 @@ async def test_load_markets_normalizes_spot_and_swap_drops_unsupported(
         # 5 supported (3 spot + 2 swap); the option market is dropped.
         assert all(isinstance(m, Market) for m in markets)
         symbols = {m.symbol for m in markets}
-        assert "BTC/USDT" in symbols
-        assert "ETH/USDT:USDT" in symbols
+        assert "BTC/USD" in symbols
+        assert "ETH/USD:USD" in symbols
         assert not any("251226" in s for s in symbols)  # option dropped
         assert len(markets) == 5
 
@@ -131,10 +131,10 @@ async def test_normalized_market_fields(patch_client: Callable[..., FakeCcxt]) -
     adapter = await _adapter(patch_client)
     async with adapter:
         markets = {m.symbol: m for m in await adapter.load_markets()}
-        spot = markets["BTC/USDT"]
+        spot = markets["BTC/USD"]
         assert spot.type == "spot"
         assert spot.base == "BTC"
-        assert spot.quote == "USDT"
+        assert spot.quote == "USD"
         assert spot.price_precision == 0.01
         assert spot.amount_precision == 0.0001
         assert spot.min_amount == 0.0001
@@ -143,9 +143,9 @@ async def test_normalized_market_fields(patch_client: Callable[..., FakeCcxt]) -
         assert spot.maker_fee == 0.001
         assert spot.taker_fee == 0.0015
 
-        swap = markets["ETH/USDT:USDT"]
+        swap = markets["ETH/USD:USD"]
         assert swap.type == "swap"
-        assert swap.settle == "USDT"
+        assert swap.settle == "USD"
         assert swap.linear is True
         assert swap.contract_size == 1.0
 
@@ -191,10 +191,10 @@ async def test_search_symbols_case_insensitive_substring(
         # Matches on base "BTC" across spot+swap, case-insensitively.
         matches = await adapter.search_symbols("btc")
         symbols = {m.symbol for m in matches}
-        assert "BTC/USDT" in symbols
-        assert "BTC/USDT:USDT" in symbols
+        assert "BTC/USD" in symbols
+        assert "BTC/USD:USD" in symbols
         # No ETH-only market should appear for a BTC query.
-        assert "ETH/USDT" not in symbols
+        assert "ETH/USD" not in symbols
 
 
 async def test_search_symbols_matches_quote(
@@ -202,8 +202,8 @@ async def test_search_symbols_matches_quote(
 ) -> None:
     adapter = await _adapter(patch_client)
     async with adapter:
-        matches = await adapter.search_symbols("USDT")
-        # Every active spot/swap quotes USDT here.
+        matches = await adapter.search_symbols("USD")
+        # Every active spot/swap quotes USD here.
         assert len(matches) >= 4
 
 
@@ -212,7 +212,7 @@ async def test_search_symbols_respects_limit(
 ) -> None:
     adapter = await _adapter(patch_client)
     async with adapter:
-        matches = await adapter.search_symbols("USDT", limit=1)
+        matches = await adapter.search_symbols("USD", limit=1)
         assert len(matches) == 1
 
 
@@ -221,7 +221,7 @@ async def test_search_symbols_market_type_filter(
 ) -> None:
     adapter = await _adapter(patch_client)
     async with adapter:
-        matches = await adapter.search_symbols("USDT", market_type="swap")
+        matches = await adapter.search_symbols("USD", market_type="swap")
         assert {m.type for m in matches} == {"swap"}
 
 
@@ -231,10 +231,10 @@ async def test_search_symbols_market_type_filter(
 async def test_fetch_ticker_normalizes(patch_client: Callable[..., FakeCcxt]) -> None:
     adapter = await _adapter(patch_client)
     async with adapter:
-        ticker = await adapter.fetch_ticker("BTC/USDT")
+        ticker = await adapter.fetch_ticker("BTC/USD")
         assert isinstance(ticker, Ticker)
-        assert ticker.exchange == "bybit"
-        assert ticker.symbol == "BTC/USDT"
+        assert ticker.exchange == "coinbase"
+        assert ticker.symbol == "BTC/USD"
         assert ticker.last == 42000.5
         assert ticker.bid == 41999.0
         assert ticker.ask == 42001.0
@@ -248,7 +248,7 @@ async def test_fetch_ohlcv_normalizes_and_skips_short_rows(
 ) -> None:
     adapter = await _adapter(patch_client)
     async with adapter:
-        result = await adapter.fetch_ohlcv("BTC/USDT", "1h", limit=10)
+        result = await adapter.fetch_ohlcv("BTC/USD", "1h", limit=10)
         assert isinstance(result, OHLCVResult)
         assert result.timeframe == "1h"
         # 3 valid rows; the 4th (short) row is skipped.
@@ -276,10 +276,10 @@ async def test_fetch_ohlcv_passes_since_as_ms(
         return await original(symbol, timeframe, since, limit)
 
     monkeypatch.setattr(client, "fetch_ohlcv", spy)
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         since = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
-        await adapter.fetch_ohlcv("BTC/USDT", "1h", since=since, limit=7)
+        await adapter.fetch_ohlcv("BTC/USD", "1h", since=since, limit=7)
         assert captured["since"] == int(since.timestamp() * 1000)
         assert captured["limit"] == 7
 
@@ -289,9 +289,9 @@ async def test_fetch_order_book_normalizes_and_skips_short_levels(
 ) -> None:
     adapter = await _adapter(patch_client)
     async with adapter:
-        book = await adapter.fetch_order_book("BTC/USDT", limit=5)
+        book = await adapter.fetch_order_book("BTC/USD", limit=5)
         assert isinstance(book, OrderBook)
-        assert book.symbol == "BTC/USDT"
+        assert book.symbol == "BTC/USD"
         assert book.timestamp == FIXED_DT
         # The malformed (short) bid is skipped: 2 bids, 2 asks.
         assert len(book.bids) == 2
@@ -305,7 +305,7 @@ async def test_fetch_recent_trades_normalizes_and_skips_bad(
 ) -> None:
     adapter = await _adapter(patch_client)
     async with adapter:
-        result = await adapter.fetch_recent_trades("BTC/USDT", limit=50)
+        result = await adapter.fetch_recent_trades("BTC/USD", limit=50)
         assert isinstance(result, RecentTradesResult)
         # 2 valid trades; the priceless one is skipped.
         assert result.count == 2
@@ -324,9 +324,9 @@ async def test_fetch_funding_rate_normalizes(
 ) -> None:
     adapter = await _adapter(patch_client)
     async with adapter:
-        funding = await adapter.fetch_funding_rate("ETH/USDT:USDT")
+        funding = await adapter.fetch_funding_rate("ETH/USD:USD")
         assert isinstance(funding, FundingRate)
-        assert funding.symbol == "ETH/USDT:USDT"
+        assert funding.symbol == "ETH/USD:USD"
         assert funding.funding_rate == 0.0001
         assert funding.mark_price == 2500.5
         assert funding.index_price == 2500.0

@@ -29,34 +29,34 @@ def test_ms_to_datetime_none_passthrough() -> None:
 
 def test_models_are_frozen() -> None:
     market = Market(
-        exchange="bybit",
-        symbol="BTC/USDT",
+        exchange="coinbase",
+        symbol="BTC/USD",
         base="BTC",
-        quote="USDT",
+        quote="USD",
         type="spot",
     )
     with pytest.raises(Exception, match=r"frozen|Instance is frozen"):
-        market.symbol = "ETH/USDT"  # type: ignore[misc]
+        market.symbol = "ETH/USD"  # type: ignore[misc]
 
 
 def test_models_ignore_extra_fields() -> None:
     """``extra="ignore"`` -- a richer-than-expected CCXT payload must not raise."""
     market = Market.model_validate(
         {
-            "exchange": "bybit",
-            "symbol": "BTC/USDT",
+            "exchange": "coinbase",
+            "symbol": "BTC/USD",
             "base": "BTC",
-            "quote": "USDT",
+            "quote": "USD",
             "type": "spot",
             "some_future_ccxt_field": 123,
         }
     )
-    assert market.symbol == "BTC/USDT"
+    assert market.symbol == "BTC/USD"
     assert not hasattr(market, "some_future_ccxt_field")
 
 
 def test_optional_fields_degrade_to_none() -> None:
     """Lenient models: a partial payload degrades missing fields to None."""
-    ticker = Ticker(exchange="bybit", symbol="BTC/USDT")
+    ticker = Ticker(exchange="coinbase", symbol="BTC/USD")
     assert ticker.last is None
     assert ticker.timestamp is None

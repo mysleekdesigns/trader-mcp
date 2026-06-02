@@ -1,7 +1,7 @@
 # trader-mcp
 
 > A terminal-first, AI-native crypto trading platform delivered as a **Model Context Protocol (MCP) server**.
-> Connect your AI assistant (Claude Code, Codex, Cursor) over MCP, **prompt your way to a strategy**, **backtest it on real market data**, and **deploy to Bybit, BloFin, Toobit, or WeeX** — all from your editor or chat.
+> Connect your AI assistant (Claude Code, Codex, Cursor) over MCP, **prompt your way to a strategy**, **backtest it on real market data**, and **deploy to Coinbase, Kraken, Gemini, or Crypto.com** — all from your editor or chat.
 
 **One-liner:** *Prompt a strategy, backtest it on real data, deploy it to your exchange — without leaving your editor.*
 
@@ -13,7 +13,7 @@
 
 `trader-mcp` is for **developers and "vibe traders"** who live in a terminal/editor and want to drive the entire strategy lifecycle — research → author → backtest → paper → (later, gated) live — through natural-language prompts to an AI assistant, with deterministic, typed tools doing the real work underneath. An AI client connects over MCP stdio; the server exposes typed tools, resources, and prompts.
 
-Target exchanges (all via one CCXT adapter): **Bybit** (reference), **BloFin**, **Toobit**, **WeeX**.
+Target exchanges (all via one CCXT adapter, all US-accessible and USD/USDC-quoted): **Coinbase** (reference), **Kraken**, **Gemini**, **Crypto.com**.
 
 ## Install & run
 
@@ -59,8 +59,8 @@ Configuration is loaded with precedence **environment → `.env` → OS keyring*
 | Variable | Purpose |
 | --- | --- |
 | `TRADER_MCP_LOG_LEVEL` | Log verbosity (`DEBUG`/`INFO`/`WARNING`/...). Default `INFO`. |
-| `TRADER_MCP_DEFAULT_EXCHANGE` | Default exchange when a tool omits one. Default `bybit`. |
-| `BYBIT_API_KEY` / `BYBIT_API_SECRET` | Optional read-only Bybit credentials (same pattern for `BLOFIN_`, `TOOBIT_`, `WEEX_`). |
+| `TRADER_MCP_DEFAULT_EXCHANGE` | Default exchange when a tool omits one. Default `coinbase`. |
+| `COINBASE_API_KEY` / `COINBASE_API_SECRET` | Optional read-only Coinbase credentials (same pattern for `KRAKEN_`, `GEMINI_`, `CRYPTOCOM_`). |
 
 ## Development
 

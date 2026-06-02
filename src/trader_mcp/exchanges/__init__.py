@@ -1,7 +1,7 @@
 """Exchange connectivity (owned by ``exchange-adapter-engineer``).
 
-A single unified CCXT (async) adapter for Bybit, BloFin, Toobit, and WeeX. Bybit is
-the reference exchange, validated first. This package is read-only and market-data
+A single unified CCXT (async) adapter for Coinbase, Kraken, Gemini, and Crypto.com.
+Coinbase is the reference exchange, validated first. This package is read-only and market-data
 only: it exposes no order placement/cancellation/routing -- those paths do not
 exist until Phase 6. CCXT Pro WebSocket streaming lands in Phase 5.
 

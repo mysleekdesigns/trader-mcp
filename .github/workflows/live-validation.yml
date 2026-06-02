@@ -19,14 +19,15 @@ jobs:
       - uses: actions/checkout@v4
 
       # Step 1 — reachability probe. Decides whether GitHub's runners can reach
-      # Bybit at all. If not (and no proxy secret is configured), warn and stop
-      # WITHOUT failing the job (geo-block is an environment fact, not a code bug).
-      # NOTE: the probe checks only the public /v5/market/time endpoint; a 200 here
+      # Coinbase (the reference exchange) at all. If not (and no proxy secret is
+      # configured), warn and stop WITHOUT failing the job (an unreachable venue is
+      # an environment fact, not a code bug).
+      # NOTE: the probe checks only the public /v2/time endpoint; a 200 here
       # confirms reachability, not that every market-data path works. Do NOT add
       # `-v` or `set -x` to this step — either would print the proxy URL (with
       # userinfo) to the log; GitHub masks the registered secret value, but keep the
       # surface minimal regardless.
-      - name: Probe Bybit reachability
+      - name: Probe Coinbase reachability
         id: probe
         env:
           # Optional repo secret; route the probe through an allowed region if set.
@@ -34,16 +35,16 @@ jobs:
         run: |
           set +e
           if [ -n "$TRADER_MCP_HTTPS_PROXY" ]; then
-            code=$(curl -sS -o /dev/null -w "%{http_code}" --proxy "$TRADER_MCP_HTTPS_PROXY" https://api.bybit.com/v5/market/time)
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --proxy "$TRADER_MCP_HTTPS_PROXY" https://api.coinbase.com/v2/time)
           else
-            code=$(curl -sS -o /dev/null -w "%{http_code}" https://api.bybit.com/v5/market/time)
+            code=$(curl -sS -o /dev/null -w "%{http_code}" https://api.coinbase.com/v2/time)
           fi
-          echo "Bybit /v5/market/time HTTP status: ${code:-000}"
+          echo "Coinbase /v2/time HTTP status: ${code:-000}"
           if [ "$code" = "200" ]; then
             echo "reachable=true" >> "$GITHUB_OUTPUT"
           else
             echo "reachable=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Bybit not reachable from this runner (HTTP ${code:-000}). Skipping live validation. Set the TRADER_MCP_HTTPS_PROXY repo secret to route through an allowed region."
+            echo "::warning::Coinbase not reachable from this runner (HTTP ${code:-000}). Skipping live validation. Set the TRADER_MCP_HTTPS_PROXY repo secret to route through an allowed region."
           fi
 
       - name: Install uv
@@ -56,8 +57,8 @@ jobs:
         if: steps.probe.outputs.reachable == 'true'
         run: uv sync --frozen
 
-      # Step 2 — the actual validation. The CLI gates on Bybit (non-zero exit on a
-      # Bybit deep-validation failure); the live pytest suite asserts invariants.
+      # Step 2 — the actual validation. The CLI gates on Coinbase (non-zero exit on a
+      # Coinbase deep-validation failure); the live pytest suite asserts invariants.
       - name: Validate (CLI report)
         if: steps.probe.outputs.reachable == 'true'
         env:

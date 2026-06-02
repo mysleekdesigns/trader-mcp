@@ -5,8 +5,9 @@ itself stays exchange-agnostic and reaches every exchange through the same CCXT
 code path; any genuine quirk is encoded here (or as a CCXT capability flag) rather
 than as a branch in the adapter.
 
-PRD: Bybit is the reference exchange (validated first, ``certified`` tier); the
-other three are ``supported`` tier. All four expose WebSocket streams via CCXT Pro
+PRD: Coinbase is the reference exchange (validated first, ``certified`` tier).
+Kraken is also ``certified`` (both are CCXT-Certified per PRD §10); Gemini and
+Crypto.com are ``supported`` tier. All four expose WebSocket streams via CCXT Pro
 (used from Phase 5).
 """
 
@@ -46,39 +47,42 @@ class _ExchangeMeta:
         self.has_websocket = has_websocket
 
 
-# Deterministic order: the reference exchange (bybit) first, then the others. The
-# ``ccxt_id`` matches ``ccxt.async_support.<ccxt_id>`` and is identical to the
+# Deterministic order: the reference exchange (coinbase) first, then the others.
+# The ``ccxt_id`` matches ``ccxt.async_support.<ccxt_id>`` and is identical to the
 # trader-mcp ``ExchangeId`` for all four exchanges today, but is kept separate so a
-# future divergence (a renamed CCXT id) is a one-line change here.
+# future divergence (a renamed CCXT id) is a one-line change here. We pin the plain
+# spot ids (``coinbase``/``kraken``/``gemini``/``cryptocom``) for v1; the
+# perp/advanced variants (e.g. ``krakenfutures``, ``coinbaseadvanced``) are out of
+# scope. NOTE: ``coinbase`` is spot-only -- it exposes no perps/funding.
 _REGISTRY: tuple[_ExchangeMeta, ...] = (
     _ExchangeMeta(
-        exchange="bybit",
-        ccxt_id="bybit",
-        name="Bybit",
+        exchange="coinbase",
+        ccxt_id="coinbase",
+        name="Coinbase",
         is_reference=True,
         reliability_tier="certified",
         has_websocket=True,
     ),
     _ExchangeMeta(
-        exchange="blofin",
-        ccxt_id="blofin",
-        name="BloFin",
+        exchange="kraken",
+        ccxt_id="kraken",
+        name="Kraken",
+        is_reference=False,
+        reliability_tier="certified",
+        has_websocket=True,
+    ),
+    _ExchangeMeta(
+        exchange="gemini",
+        ccxt_id="gemini",
+        name="Gemini",
         is_reference=False,
         reliability_tier="supported",
         has_websocket=True,
     ),
     _ExchangeMeta(
-        exchange="toobit",
-        ccxt_id="toobit",
-        name="Toobit",
-        is_reference=False,
-        reliability_tier="supported",
-        has_websocket=True,
-    ),
-    _ExchangeMeta(
-        exchange="weex",
-        ccxt_id="weex",
-        name="WeeX",
+        exchange="cryptocom",
+        ccxt_id="cryptocom",
+        name="Crypto.com",
         is_reference=False,
         reliability_tier="supported",
         has_websocket=True,
@@ -103,7 +107,7 @@ def list_supported() -> list[ExchangeInfo]:
     """Return metadata for all supported exchanges.
 
     Returns:
-        A deterministically-ordered list (Bybit, the reference exchange, first).
+        A deterministically-ordered list (Coinbase, the reference exchange, first).
     """
     return [_to_info(meta) for meta in _REGISTRY]
 

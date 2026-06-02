@@ -35,7 +35,7 @@ SECRET_TOKEN = "SECRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 #: A ccxt error message embedding the secret as both a bare token and a keyed
 #: ``apiKey=`` pair, to exercise both redaction rules.
 SECRET_LEAK_MESSAGE = (
-    f"bybit GET /v5/account failed: apiKey={SECRET_TOKEN} signature mismatch {SECRET_TOKEN}"
+    f"coinbase GET /v2/accounts failed: apiKey={SECRET_TOKEN} signature mismatch {SECRET_TOKEN}"
 )
 
 
@@ -48,10 +48,10 @@ def assert_no_secret(text: str) -> None:
 # CCXT market-dict builders (raw shapes the adapter normalizes)
 # --------------------------------------------------------------------------- #
 def spot_market(
-    symbol: str = "BTC/USDT",
+    symbol: str = "BTC/USD",
     *,
     base: str = "BTC",
-    quote: str = "USDT",
+    quote: str = "USD",
     active: bool = True,
 ) -> dict[str, Any]:
     """A CCXT spot market dict."""
@@ -75,11 +75,11 @@ def spot_market(
 
 
 def swap_market(
-    symbol: str = "ETH/USDT:USDT",
+    symbol: str = "ETH/USD:USD",
     *,
     base: str = "ETH",
-    quote: str = "USDT",
-    settle: str = "USDT",
+    quote: str = "USD",
+    settle: str = "USD",
     active: bool = True,
 ) -> dict[str, Any]:
     """A CCXT linear perpetual-swap market dict."""
@@ -135,11 +135,11 @@ def default_markets() -> dict[str, dict[str, Any]]:
     swap markets.
     """
     markets = [
-        spot_market("BTC/USDT", base="BTC", quote="USDT"),
-        spot_market("ETH/USDT", base="ETH", quote="USDT"),
+        spot_market("BTC/USD", base="BTC", quote="USD"),
+        spot_market("ETH/USD", base="ETH", quote="USD"),
         spot_market("SOL/BTC", base="SOL", quote="BTC", active=False),
-        swap_market("ETH/USDT:USDT", base="ETH", quote="USDT"),
-        swap_market("BTC/USDT:USDT", base="BTC", quote="USDT"),
+        swap_market("ETH/USD:USD", base="ETH", quote="USD"),
+        swap_market("BTC/USD:USD", base="BTC", quote="USD"),
         option_market(),
     ]
     return {m["symbol"]: m for m in markets}
@@ -152,7 +152,7 @@ def default_markets() -> dict[str, dict[str, Any]]:
 FIXED_MS = 1_704_164_645_000
 
 
-def ticker_payload(symbol: str = "BTC/USDT") -> dict[str, Any]:
+def ticker_payload(symbol: str = "BTC/USD") -> dict[str, Any]:
     return {
         "symbol": symbol,
         "timestamp": FIXED_MS,
@@ -180,7 +180,7 @@ def ohlcv_payload() -> list[list[float]]:
     ]
 
 
-def order_book_payload(symbol: str = "BTC/USDT") -> dict[str, Any]:
+def order_book_payload(symbol: str = "BTC/USD") -> dict[str, Any]:
     """An order book with one malformed (short) level per side, to be skipped."""
     return {
         "symbol": symbol,
@@ -218,7 +218,7 @@ def trades_payload() -> list[dict[str, Any]]:
     ]
 
 
-def funding_rate_payload(symbol: str = "ETH/USDT:USDT") -> dict[str, Any]:
+def funding_rate_payload(symbol: str = "ETH/USD:USD") -> dict[str, Any]:
     return {
         "symbol": symbol,
         "fundingRate": 0.0001,
@@ -278,7 +278,7 @@ class FakeCcxt:
         self.order_book_data = order_book_payload()
         self.trades_data = trades_payload()
         self.funding_data = funding_rate_payload()
-        self.balance_data: dict[str, Any] = {"USDT": {"free": 100.0, "used": 0.0, "total": 100.0}}
+        self.balance_data: dict[str, Any] = {"USD": {"free": 100.0, "used": 0.0, "total": 100.0}}
 
         #: Per-method exception to raise on EVERY call (persistent failure).
         self.raise_on: dict[str, BaseException] = {}

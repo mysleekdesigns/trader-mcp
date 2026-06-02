@@ -51,14 +51,14 @@ def _capture_config(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 async def test_timeout_always_lands_in_config(monkeypatch: pytest.MonkeyPatch) -> None:
     captured = _capture_config(monkeypatch)
-    adapter = await ExchangeAdapter.create("bybit", settings=Settings(request_timeout_ms=12_345))
+    adapter = await ExchangeAdapter.create("coinbase", settings=Settings(request_timeout_ms=12_345))
     async with adapter:
         assert captured["config"]["timeout"] == 12_345
 
 
 async def test_no_proxy_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     captured = _capture_config(monkeypatch)
-    adapter = await ExchangeAdapter.create("bybit", settings=Settings())
+    adapter = await ExchangeAdapter.create("coinbase", settings=Settings())
     async with adapter:
         config = captured["config"]
         assert "httpsProxy" not in config
@@ -75,7 +75,7 @@ async def test_empty_string_proxies_treated_as_unset(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("TRADER_MCP_HTTPS_PROXY", "")
     monkeypatch.setenv("TRADER_MCP_SOCKS_PROXY", "   ")
     captured = _capture_config(monkeypatch)
-    adapter = await ExchangeAdapter.create("bybit", settings=Settings())
+    adapter = await ExchangeAdapter.create("coinbase", settings=Settings())
     async with adapter:
         config = captured["config"]
         assert "httpsProxy" not in config
@@ -85,7 +85,9 @@ async def test_empty_string_proxies_treated_as_unset(monkeypatch: pytest.MonkeyP
 async def test_https_proxy_lands_in_config(monkeypatch: pytest.MonkeyPatch) -> None:
     captured = _capture_config(monkeypatch)
     url = f"http://user:{PROXY_TOKEN}@proxy.example:8080"
-    adapter = await ExchangeAdapter.create("bybit", settings=Settings(https_proxy=SecretStr(url)))
+    adapter = await ExchangeAdapter.create(
+        "coinbase", settings=Settings(https_proxy=SecretStr(url))
+    )
     async with adapter:
         config = captured["config"]
         assert config["httpsProxy"] == url
@@ -99,7 +101,9 @@ async def test_socks_proxy_lands_in_config_when_dep_available(
     monkeypatch.setattr(adapter_module, "_aiohttp_socks_available", lambda: True)
     captured = _capture_config(monkeypatch)
     url = f"socks5://user:{PROXY_TOKEN}@proxy.example:1080"
-    adapter = await ExchangeAdapter.create("bybit", settings=Settings(socks_proxy=SecretStr(url)))
+    adapter = await ExchangeAdapter.create(
+        "coinbase", settings=Settings(socks_proxy=SecretStr(url))
+    )
     async with adapter:
         config = captured["config"]
         assert config["socksProxy"] == url
@@ -113,7 +117,7 @@ async def test_both_proxies_set_raises_config_error(monkeypatch: pytest.MonkeyPa
         socks_proxy=SecretStr("socks5://proxy.example:1080"),
     )
     with pytest.raises(ConfigError, match="only one"):
-        await ExchangeAdapter.create("bybit", settings=settings)
+        await ExchangeAdapter.create("coinbase", settings=settings)
 
 
 async def test_socks_proxy_without_dependency_raises_config_error(
@@ -123,7 +127,7 @@ async def test_socks_proxy_without_dependency_raises_config_error(
     _capture_config(monkeypatch)
     settings = Settings(socks_proxy=SecretStr("socks5://proxy.example:1080"))
     with pytest.raises(ConfigError, match="aiohttp_socks"):
-        await ExchangeAdapter.create("bybit", settings=settings)
+        await ExchangeAdapter.create("coinbase", settings=settings)
 
 
 async def test_proxy_url_never_appears_in_logs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -149,7 +153,7 @@ async def test_proxy_url_never_appears_in_logs(monkeypatch: pytest.MonkeyPatch) 
         _capture_config(monkeypatch)
         url = f"http://user:{PROXY_TOKEN}@proxy.example:8080"
         adapter = await ExchangeAdapter.create(
-            "bybit", settings=Settings(https_proxy=SecretStr(url))
+            "coinbase", settings=Settings(https_proxy=SecretStr(url))
         )
         await adapter.aclose()
     finally:
@@ -170,6 +174,6 @@ def test_proxy_credential_redacted_in_mapped_error() -> None:
     """
     url = f"http://user:{PROXY_TOKEN}@proxy.example:8080"
     exc = ccxt.NetworkError(f"Cannot connect to proxy {url}: connection refused")
-    mapped = map_ccxt_error(exc, exchange="bybit", op="fetch_ticker")
+    mapped = map_ccxt_error(exc, exchange="coinbase", op="fetch_ticker")
     assert PROXY_TOKEN not in str(mapped)
     assert PROXY_TOKEN not in mapped.details["cause"]

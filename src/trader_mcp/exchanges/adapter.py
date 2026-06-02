@@ -1,8 +1,8 @@
 """The single unified CCXT (async) adapter for all four target exchanges.
 
 One :class:`ExchangeAdapter` wraps one CCXT async client and exposes a typed,
-read-only, market-data surface. Bybit is the reference exchange; BloFin, Toobit,
-and WeeX reach the same methods through the identical code path -- there is no
+read-only, market-data surface. Coinbase is the reference exchange; Kraken, Gemini,
+and Crypto.com reach the same methods through the identical code path -- there is no
 per-exchange branching here (genuine differences live in
 :mod:`trader_mcp.exchanges.registry` or as CCXT capability flags).
 
@@ -72,7 +72,7 @@ def _create_ccxt_client(exchange_id: str, config: dict[str, Any]) -> Any:
     any network access.
 
     Args:
-        exchange_id: The CCXT client id (e.g. ``"bybit"``).
+        exchange_id: The CCXT client id (e.g. ``"coinbase"``).
         config: The CCXT constructor config (rate limiting, optional credentials).
 
     Returns:
@@ -321,7 +321,8 @@ class ExchangeAdapter:
         return ExchangeCapabilities(
             exchange=self.exchange_id,
             ccxt_id=ccxt_id_for(self.exchange_id),
-            # These four CEXes offer both spot and swap; default True if CCXT omits.
+            # Default True if CCXT omits the flag; the actual ``has`` map governs.
+            # (Coinbase is spot-only, so its ``has_swap`` resolves False from CCXT.)
             has_spot=self._has(has, "spot", default=True),
             has_swap=self._has(has, "swap", default=True),
             has_websocket=meta.has_websocket,
@@ -499,7 +500,7 @@ class ExchangeAdapter:
         """Fetch OHLCV candles for ``symbol``/``timeframe``.
 
         Args:
-            symbol: Unified CCXT symbol (e.g. ``"BTC/USDT:USDT"``).
+            symbol: Unified CCXT symbol (e.g. ``"BTC/USD"``).
             timeframe: CCXT timeframe key (e.g. ``"1m"``, ``"1h"``, ``"1d"``).
             since: Earliest candle open time (inclusive). Converted to ms.
             limit: Maximum number of candles to return.

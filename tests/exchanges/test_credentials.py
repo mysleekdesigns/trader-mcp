@@ -30,7 +30,7 @@ async def test_no_credentials_returns_unknown_without_network(
 ) -> None:
     """With no creds: configured=False, valid=None, scope=unknown, no balance call."""
     client = patch_client()
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         status = await adapter.validate_credentials()
         assert isinstance(status, CredentialStatus)
@@ -63,7 +63,7 @@ async def test_valid_credentials_report_read_only(
     """Configured creds + a successful private read -> valid, read-only, no trade."""
     client = FakeCcxt()
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", make_create_factory(client))
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         status = await adapter.validate_credentials()
         assert status.configured is True
@@ -84,7 +84,7 @@ async def test_invalid_credentials_redacted_message(
     client = FakeCcxt()
     client.raise_on["fetch_balance"] = ccxt_error("auth", leak=True)
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", make_create_factory(client))
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         status = await adapter.validate_credentials()
         assert status.configured is True
@@ -103,7 +103,7 @@ async def test_credential_status_never_serializes_secret(
     client = FakeCcxt()
     client.raise_on["fetch_balance"] = ccxt_error("auth", leak=True)
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", make_create_factory(client))
-    adapter = await ExchangeAdapter.create("bybit")
+    adapter = await ExchangeAdapter.create("coinbase")
     async with adapter:
         status = await adapter.validate_credentials()
         assert_no_secret(status.model_dump_json())

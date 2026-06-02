@@ -40,7 +40,7 @@ from trader_mcp.server.schemas import (
     SymbolSearchResult,
 )
 
-EXCHANGE_IDS = {"bybit", "blofin", "toobit", "weex"}
+EXCHANGE_IDS = {"coinbase", "kraken", "gemini", "cryptocom"}
 
 #: The 9 Phase 1 market-data/discovery tools build_app must register.
 PHASE1_TOOLS = (
@@ -126,12 +126,12 @@ async def test_phase1_tools_constrain_exchange_enum() -> None:
 # --------------------------------------------------------------------------- #
 # list_exchanges -- static, no fake needed
 # --------------------------------------------------------------------------- #
-async def test_list_exchanges_returns_four_bybit_first() -> None:
+async def test_list_exchanges_returns_four_coinbase_first() -> None:
     app = build_app()
     structured = _structured(await app.call_tool("list_exchanges", {}))
     result = ExchangesResult.model_validate(structured)
     assert result.count == 4
-    assert [e.exchange for e in result.exchanges] == ["bybit", "blofin", "toobit", "weex"]
+    assert [e.exchange for e in result.exchanges] == ["coinbase", "kraken", "gemini", "cryptocom"]
 
 
 # --------------------------------------------------------------------------- #
@@ -139,45 +139,47 @@ async def test_list_exchanges_returns_four_bybit_first() -> None:
 # --------------------------------------------------------------------------- #
 async def test_get_exchange_capabilities(app_with_fake: Any) -> None:
     structured = _structured(
-        await app_with_fake.call_tool("get_exchange_capabilities", {"exchange": "bybit"})
+        await app_with_fake.call_tool("get_exchange_capabilities", {"exchange": "coinbase"})
     )
     caps = ExchangeCapabilities.model_validate(structured)
-    assert caps.exchange == "bybit"
+    assert caps.exchange == "coinbase"
     assert caps.supports_ohlcv is True
 
 
 async def test_search_symbols(app_with_fake: Any) -> None:
     structured = _structured(
-        await app_with_fake.call_tool("search_symbols", {"exchange": "bybit", "query": "btc"})
+        await app_with_fake.call_tool("search_symbols", {"exchange": "coinbase", "query": "btc"})
     )
     result = SymbolSearchResult.model_validate(structured)
-    assert result.exchange == "bybit"
+    assert result.exchange == "coinbase"
     assert result.query == "btc"
     assert result.count == len(result.markets)
     assert all("BTC" in m.base or "BTC" in m.symbol for m in result.markets)
 
 
 async def test_list_markets(app_with_fake: Any) -> None:
-    structured = _structured(await app_with_fake.call_tool("list_markets", {"exchange": "bybit"}))
+    structured = _structured(
+        await app_with_fake.call_tool("list_markets", {"exchange": "coinbase"})
+    )
     result = MarketsResult.model_validate(structured)
-    assert result.exchange == "bybit"
+    assert result.exchange == "coinbase"
     assert result.count == len(result.markets)
     assert result.count >= 1
 
 
 async def test_get_ticker(app_with_fake: Any) -> None:
     structured = _structured(
-        await app_with_fake.call_tool("get_ticker", {"exchange": "bybit", "symbol": "BTC/USDT"})
+        await app_with_fake.call_tool("get_ticker", {"exchange": "coinbase", "symbol": "BTC/USD"})
     )
     ticker = Ticker.model_validate(structured)
-    assert ticker.symbol == "BTC/USDT"
+    assert ticker.symbol == "BTC/USD"
     assert ticker.last == 42000.5
 
 
 async def test_get_ohlcv(app_with_fake: Any) -> None:
     structured = _structured(
         await app_with_fake.call_tool(
-            "get_ohlcv", {"exchange": "bybit", "symbol": "BTC/USDT", "timeframe": "1h"}
+            "get_ohlcv", {"exchange": "coinbase", "symbol": "BTC/USD", "timeframe": "1h"}
         )
     )
     result = OHLCVResult.model_validate(structured)
@@ -187,10 +189,12 @@ async def test_get_ohlcv(app_with_fake: Any) -> None:
 
 async def test_get_order_book(app_with_fake: Any) -> None:
     structured = _structured(
-        await app_with_fake.call_tool("get_order_book", {"exchange": "bybit", "symbol": "BTC/USDT"})
+        await app_with_fake.call_tool(
+            "get_order_book", {"exchange": "coinbase", "symbol": "BTC/USD"}
+        )
     )
     book = OrderBook.model_validate(structured)
-    assert book.symbol == "BTC/USDT"
+    assert book.symbol == "BTC/USD"
     assert len(book.bids) == 2
     assert len(book.asks) == 2
 
@@ -198,7 +202,7 @@ async def test_get_order_book(app_with_fake: Any) -> None:
 async def test_get_recent_trades(app_with_fake: Any) -> None:
     structured = _structured(
         await app_with_fake.call_tool(
-            "get_recent_trades", {"exchange": "bybit", "symbol": "BTC/USDT"}
+            "get_recent_trades", {"exchange": "coinbase", "symbol": "BTC/USD"}
         )
     )
     result = RecentTradesResult.model_validate(structured)
@@ -208,11 +212,11 @@ async def test_get_recent_trades(app_with_fake: Any) -> None:
 async def test_get_funding_rate(app_with_fake: Any) -> None:
     structured = _structured(
         await app_with_fake.call_tool(
-            "get_funding_rate", {"exchange": "bybit", "symbol": "ETH/USDT:USDT"}
+            "get_funding_rate", {"exchange": "coinbase", "symbol": "ETH/USD:USD"}
         )
     )
     funding = FundingRate.model_validate(structured)
-    assert funding.symbol == "ETH/USDT:USDT"
+    assert funding.symbol == "ETH/USD:USD"
     assert funding.interval == "8h"
 
 
@@ -227,7 +231,7 @@ async def test_tool_error_path_redacts_secret(
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", make_create_factory(client))
     app = build_app()
     with pytest.raises(Exception) as excinfo:  # noqa: PT011 - error type lives behind the SDK
-        await app.call_tool("get_ticker", {"exchange": "bybit", "symbol": "BTC/USDT"})
+        await app.call_tool("get_ticker", {"exchange": "coinbase", "symbol": "BTC/USD"})
     rendered = str(excinfo.value)
     assert SECRET_TOKEN not in rendered
     assert_no_secret(rendered)

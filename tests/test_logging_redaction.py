@@ -73,7 +73,7 @@ _REDACT_CASES = [
     ),
     # A proxy URL with NO credentials carries no secret -> must pass through intact.
     ("proxy_url_no_creds", "using http://proxy.example:8080 now", None, False),
-    ("safe_text", "fetching BTC/USDT ticker on bybit", None, False),
+    ("safe_text", "fetching BTC/USD ticker on coinbase", None, False),
     ("short_id", "order id ABC123 placed", None, False),
 ]
 
@@ -160,9 +160,9 @@ def test_filter_scrubs_secret_in_mapping_args() -> None:
 
 def test_filter_passes_through_clean_message_unchanged() -> None:
     """A record with no secret material renders to its plain formatted text."""
-    record = _make_record("fetched %d candles for %s", (500, "BTC/USDT"))
+    record = _make_record("fetched %d candles for %s", (500, "BTC/USD"))
     assert RedactionFilter().filter(record) is True
-    assert record.getMessage() == "fetched 500 candles for BTC/USDT"
+    assert record.getMessage() == "fetched 500 candles for BTC/USD"
 
 
 def test_filter_handles_malformed_format_without_leaking() -> None:
