@@ -16,7 +16,11 @@ credentials.json
 # ─────────────────────────────────────────────────────────────
 cache/
 .cache/
-data/
+# Anchored to repo root: a top-level data cache dir. Do NOT use a bare ``data/``
+# here — it would also match the source package ``src/trader_mcp/data/`` and
+# ``tests/data/``. The default OHLCV cache dir is ``.trader_mcp_data/`` (below).
+/data/
+.trader_mcp_data/
 *.duckdb
 *.duckdb.wal
 *.parquet

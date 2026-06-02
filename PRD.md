@@ -205,13 +205,13 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ### Phase 2 — Historical data pipeline & cache
 **Goal:** Reliable, resumable local history for real-data backtests.
-- [ ] Paginated `fetchOHLCV` downloader (handles per-exchange page limits)
-- [ ] DuckDB + Parquet store; schema (exchange, symbol, timeframe, ts, OHLCV)
-- [ ] `sync_history` (incremental, resumable); `list_cached_datasets`; `inspect_dataset`
-- [ ] Data-quality checks: gap detection, dedupe, monotonic timestamps, timezone normalization
-- [ ] Multi-timeframe support + resampling
-- [ ] Expose cached datasets as MCP **resources**
-- **Exit:** Can sync ≥1 year of BTC/USD 1h on Coinbase, detect/repair gaps, and serve it to the backtester.
+- [x] Paginated `fetchOHLCV` downloader (handles per-exchange page limits)
+- [x] DuckDB + Parquet store; schema (exchange, symbol, timeframe, ts, OHLCV)
+- [x] `sync_history` (incremental, resumable); `list_cached_datasets`; `inspect_dataset`
+- [x] Data-quality checks: gap detection, dedupe, monotonic timestamps, timezone normalization
+- [x] Multi-timeframe support + resampling
+- [x] Expose cached datasets as MCP **resources**
+- **Exit:** Can sync ≥1 year of BTC/USD 1h on Coinbase, detect/repair gaps, and serve it to the backtester. _(Validated **offline**: a faithful paginating CCXT fake drives an 8760-bar BTC/USD 1h sync through the real adapter→store path, with gap inject/detect/repair and read-back as `OHLCVResult` to feed the backtester. The real **networked** Coinbase sync is deferred to a US-eligible, non-sandboxed host — this build env has no exchange network, same as the Phase 1 live box. Owner: data-pipeline-engineer.)_
 
 ### Phase 3 — Strategy spec & template library
 **Goal:** An AI can author and validate a strategy via prompts.

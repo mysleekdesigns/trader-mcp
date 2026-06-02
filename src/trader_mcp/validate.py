@@ -202,11 +202,11 @@ async def _smoke(adapter: ExchangeAdapter) -> list[CheckResult]:
         return results
 
     async def ticker() -> CheckResult:
-        t = await adapter.fetch_ticker(symbol)  # type: ignore[arg-type]
+        t = await adapter.fetch_ticker(symbol)
         return _ok("ticker", f"{symbol} last={t.last}")
 
     async def ohlcv() -> CheckResult:
-        res = await adapter.fetch_ohlcv(symbol, "1h", limit=10)  # type: ignore[arg-type]
+        res = await adapter.fetch_ohlcv(symbol, "1h", limit=10)
         if not res.bars:
             return _fail("ohlcv", "no bars")
         return _ok("ohlcv", f"{symbol} {res.count} bars")

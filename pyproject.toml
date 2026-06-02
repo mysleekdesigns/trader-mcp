@@ -22,6 +22,7 @@ classifiers = [
 # All FastMCP usage is isolated behind trader_mcp.server._sdk.
 dependencies = [
     "ccxt>=4.4,<5",
+    "duckdb>=1.5.3",
     "mcp>=1.27,<2",
     "pydantic>=2",
     "pydantic-settings>=2",

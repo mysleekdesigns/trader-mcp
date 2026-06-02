@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import functools
 from enum import StrEnum
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
@@ -142,6 +143,12 @@ class Settings(BaseSettings):
 
     #: Default exchange used when a tool call omits one.
     default_exchange: ExchangeId = Field(default="coinbase")
+
+    #: Root directory for the file-based OHLCV cache (DuckDB + Parquet, PRD §5.1).
+    #: Project-local by default; override with ``TRADER_MCP_DATA_DIR``. The data
+    #: pipeline writes one Parquet file per (exchange, symbol, timeframe) dataset
+    #: under this tree. Everything here is gitignored -- never commit data files.
+    data_dir: Path = Field(default=Path(".trader_mcp_data"))
 
     #: Per-request timeout (milliseconds) handed to the CCXT client. Applies to
     #: every exchange call; a generous default tolerates slow public endpoints.

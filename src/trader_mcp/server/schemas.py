@@ -19,6 +19,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from trader_mcp.config import ExchangeId
+from trader_mcp.data import DatasetInfo
 from trader_mcp.exchanges import ExchangeInfo, Market
 
 
@@ -79,3 +80,48 @@ class MarketsResult(_StrictModel):
     exchange: ExchangeId = Field(description="Exchange the markets belong to.")
     markets: list[Market] = Field(description="Markets after type/active filtering and limit.")
     count: int = Field(description="Number of markets returned.")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2 historical-data list wrapper
+#
+# ``list_cached_datasets`` wraps the data layer's list-returning catalog read.
+# As with the market-data wrappers, FastMCP structured output needs a top-level
+# object, so the bare ``list[DatasetInfo]`` is wrapped here with a ``count``.
+# --------------------------------------------------------------------------- #
+class DatasetsResult(_StrictModel):
+    """Result of ``list_cached_datasets``: the local OHLCV cache catalog."""
+
+    datasets: list[DatasetInfo] = Field(
+        description="Summary of every cached dataset (exchange, canonical symbol, timeframe, "
+        "row count, coverage window, last sync time)."
+    )
+    count: int = Field(description="Number of cached datasets.")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2 dataset-catalog resource models
+#
+# The ``dataset://catalog`` MCP resource returns a *richer* view than the
+# ``list_cached_datasets`` tool: each entry carries the resolvable per-dataset
+# resource URI so clients can discover the exact ``dataset://...`` to read. This
+# is a distinct, self-validating schema (``CatalogEntry`` extends ``DatasetInfo``
+# with a typed ``resource_uri``) so the catalog payload round-trips through
+# ``CatalogResult`` -- the tool keeps returning the strict ``DatasetsResult``.
+# --------------------------------------------------------------------------- #
+class CatalogEntry(DatasetInfo):
+    """A cache-catalog entry: a :class:`DatasetInfo` plus its resolvable resource URI."""
+
+    resource_uri: str = Field(
+        description="Resolvable per-dataset resource URI (sanitized symbol form), e.g. "
+        "'dataset://coinbase/BTC-USD/1h'."
+    )
+
+
+class CatalogResult(_StrictModel):
+    """Payload of the ``dataset://catalog`` resource: URI-tagged cache entries."""
+
+    datasets: list[CatalogEntry] = Field(
+        description="Every cached dataset with its resolvable per-dataset resource URI."
+    )
+    count: int = Field(description="Number of cached datasets.")
