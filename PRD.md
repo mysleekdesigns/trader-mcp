@@ -215,14 +215,14 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ### Phase 3 — Strategy spec & template library
 **Goal:** An AI can author and validate a strategy via prompts.
-- [ ] Pydantic strategy schema (indicators, entry/exit rules, sizing, risk, fees) with versioning
-- [ ] Safe expression evaluator (whitelisted functions/operators; no arbitrary code)
-- [ ] Indicator library wrapper (pandas-ta/`ta`; optional TA-Lib)
-- [ ] Template library: MA cross, RSI mean-reversion, breakout (Donchian), MACD, Bollinger, grid, DCA
-- [ ] Tools: `list_strategy_templates`, `create_strategy`, `validate_strategy`, `get/list/update/delete_strategy`
-- [ ] Strategy persistence (file-based, version-controllable); expose as MCP resources
-- [ ] MCP **prompts** for guided strategy design
-- [ ] Rich validation errors (AI-friendly: what's wrong + how to fix)
+- [x] Pydantic strategy schema (indicators, entry/exit rules, sizing, risk, fees) with versioning
+- [x] Safe expression evaluator (whitelisted functions/operators; no arbitrary code)
+- [x] Indicator library wrapper (pandas-ta/`ta`; optional TA-Lib) _(pandas-ta, Python ≥3.12; lazy import; 3.11 CI leg skips indicator-compute tests)_
+- [x] Template library: MA cross, RSI mean-reversion, breakout (Donchian), MACD, Bollinger, grid, DCA
+- [x] Tools: `list_strategy_templates`, `create_strategy`, `validate_strategy`, `get/list/update/delete_strategy` _(+ `list_indicators`; 8 strategy tools, 22 total)_
+- [x] Strategy persistence (file-based, version-controllable); expose as MCP resources _(`strategy://catalog`, `strategy://{name}`)_
+- [x] MCP **prompts** for guided strategy design _(`design_strategy`, `pick_template`, `explain_indicators`)_
+- [x] Rich validation errors (AI-friendly: what's wrong + how to fix) _(`ValidationReport` issues carry `location` + `problem` + `fix`)_
 - **Exit:** From a plain-English prompt, the AI produces a valid, persisted strategy spec using a template.
 
 ### Phase 4 — Backtesting engine & analytics

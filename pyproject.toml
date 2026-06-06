@@ -24,6 +24,14 @@ dependencies = [
     "ccxt>=4.4,<5",
     "duckdb>=1.5.3",
     "mcp>=1.27,<2",
+    "numpy>=2",
+    "pandas>=2.2",
+    # pandas-ta 0.4.x requires Python >=3.12. The project floor is 3.11 only so
+    # CI can guard the lint/type matrix on 3.11; the runtime target is 3.12
+    # (.python-version). Mark the indicator engine 3.12+ so resolution succeeds
+    # across the declared range -- on 3.11 the indicators package raises a clear
+    # ImportError directing the user to Python 3.12.
+    "pandas-ta>=0.4; python_version >= '3.12'",
     "pydantic>=2",
     "pydantic-settings>=2",
 ]

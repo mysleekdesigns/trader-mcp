@@ -1,6 +1,8 @@
-"""Phase 2 dataset MCP resources (PRD §6: expose cached datasets as resources).
+"""Phase 2 dataset + Phase 3 strategy MCP resources (PRD §6: expose artifacts).
 
-Two resources are registered against the FastMCP server:
+Four resources are registered against the FastMCP server.
+
+Phase 2 (cached datasets):
 
     * ``dataset://catalog`` -- a single resource returning the JSON of
       :class:`~trader_mcp.server.schemas.CatalogResult` (every cached dataset,
@@ -9,6 +11,17 @@ Two resources are registered against the FastMCP server:
       ``DatasetsResult`` (each entry adds a typed ``resource_uri``).
     * ``dataset://{exchange}/{symbol}/{timeframe}`` -- a resource template
       returning one dataset's :class:`~trader_mcp.data.DatasetInspection` JSON.
+
+Phase 3 (saved strategy specs):
+
+    * ``strategy://catalog`` -- a single resource returning the JSON of
+      :class:`~trader_mcp.server.schemas.StrategyCatalogResult` (every saved
+      strategy with a resolvable per-strategy resource URI). A richer superset of
+      the ``list_strategies`` tool's ``StrategiesResult``.
+    * ``strategy://{name}`` -- a resource template returning one saved strategy's
+      full :class:`~trader_mcp.strategy.StrategySpec` JSON. ``{name}`` is the
+      slugified (URI-safe) name and is resolved back to the canonical name via the
+      saved-strategy catalog.
 
 URI caveat: CCXT symbols contain ``/`` and ``:`` (``BTC/USD``, ``BTC/USD:USD``),
 which are not URI-path-safe. The store sanitizes them on disk (``/``/``:`` -> ``-``)
@@ -31,7 +44,14 @@ from trader_mcp.data import DatasetInfo, DatasetKey, OHLCVStore
 from trader_mcp.data.store import sanitize_symbol
 from trader_mcp.errors import ValidationError
 from trader_mcp.server._sdk import FastMCP
-from trader_mcp.server.schemas import CatalogEntry, CatalogResult
+from trader_mcp.server.schemas import (
+    CatalogEntry,
+    CatalogResult,
+    StrategyCatalogEntry,
+    StrategyCatalogResult,
+)
+from trader_mcp.strategy import StrategyInfo, StrategyStore
+from trader_mcp.strategy.store import slugify
 
 #: URI of the cache catalog resource.
 CATALOG_URI = "dataset://catalog"
@@ -39,6 +59,19 @@ CATALOG_URI = "dataset://catalog"
 #: URI template for a single dataset's coverage report. ``{symbol}`` is the
 #: **sanitized** form (``/`` and ``:`` collapsed to ``-``).
 DATASET_URI_TEMPLATE = "dataset://{exchange}/{symbol}/{timeframe}"
+
+#: URI of the saved-strategy catalog resource (Phase 3).
+STRATEGY_CATALOG_URI = "strategy://catalog"
+
+#: URI template for one saved strategy's full spec. ``{name}`` is the slugified
+#: strategy name (lowercase, hyphenated -- the on-disk key), e.g.
+#: ``strategy://ma-cross-btc``.
+STRATEGY_URI_TEMPLATE = "strategy://{name}"
+
+
+def strategy_uri(info: StrategyInfo) -> str:
+    """Return the resolvable per-strategy resource URI for ``info`` (slugified name)."""
+    return f"strategy://{slugify(info.name)}"
 
 
 def dataset_uri(info: DatasetInfo) -> str:
@@ -112,3 +145,71 @@ def register_dataset_resources(app: FastMCP, store: OHLCVStore) -> None:
         key = _resolve_key(store, exchange, symbol, timeframe)
         inspection = data.inspect_dataset(store, key)
         return inspection.model_dump_json()
+
+
+def _resolve_strategy_name(store: StrategyStore, name: str) -> str:
+    """Resolve a (possibly slugified) URI ``name`` segment to the canonical strategy name.
+
+    The ``strategy://{name}`` template carries the slugified, URI-safe form (the
+    on-disk key). Scans the saved-strategy catalog and matches on slug so a URI
+    carrying ``ma-cross-btc`` recovers the canonical name ``ma-cross-btc`` (or any
+    name that slugifies to it). Raises a redacted :class:`ValidationError` when no
+    saved strategy matches (the message echoes only the requested, already-safe
+    slug).
+    """
+    want = slugify(name)
+    for info in store.list():
+        if slugify(info.name) == want:
+            return info.name
+    raise ValidationError(
+        f"No saved strategy matches strategy://{want}",
+        details={"kind": "strategy_not_found", "slug": want},
+    )
+
+
+def register_strategy_resources(app: FastMCP, store: StrategyStore) -> None:
+    """Register the Phase 3 strategy resources on ``app``.
+
+    Both resource callables close over the single process-wide ``store``. This is
+    the only place these resources are registered; ``build_app`` invokes it.
+
+    Args:
+        app: The FastMCP application to register the resources on.
+        store: The shared local strategy store the resources read from.
+    """
+
+    @app.resource(
+        STRATEGY_CATALOG_URI,
+        name="strategy-catalog",
+        title="Saved strategy catalog",
+        description=(
+            "JSON catalog of every saved strategy (name, exchange, symbol, timeframe, "
+            "strategy_type, schema_version, created/updated) with a resolvable "
+            "per-strategy resource URI for each (strategy://{slug})."
+        ),
+        mime_type="application/json",
+    )
+    def strategy_catalog() -> str:
+        """Return the saved-strategy catalog as ``StrategyCatalogResult`` JSON (URI-tagged)."""
+        entries = [
+            StrategyCatalogEntry(**info.model_dump(), resource_uri=strategy_uri(info))
+            for info in store.list()
+        ]
+        return StrategyCatalogResult(strategies=entries, count=len(entries)).model_dump_json()
+
+    @app.resource(
+        STRATEGY_URI_TEMPLATE,
+        name="strategy-spec",
+        title="Saved strategy spec",
+        description=(
+            "Full saved StrategySpec JSON for one strategy. The name path segment is the "
+            "slugified form, e.g. 'strategy://ma-cross-btc'; it is resolved back to the "
+            "canonical strategy name via the saved-strategy catalog."
+        ),
+        mime_type="application/json",
+    )
+    def strategy_spec(name: str) -> str:
+        """Return one saved strategy's full ``StrategySpec`` JSON, resolved from a slug."""
+        canonical = _resolve_strategy_name(store, name)
+        spec = store.load(canonical)
+        return spec.model_dump_json()

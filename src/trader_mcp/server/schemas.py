@@ -21,6 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from trader_mcp.config import ExchangeId
 from trader_mcp.data import DatasetInfo
 from trader_mcp.exchanges import ExchangeInfo, Market
+from trader_mcp.indicators import IndicatorInfo
+from trader_mcp.strategy import StrategyInfo, StrategySpec, TemplateInfo
 
 
 class _StrictModel(BaseModel):
@@ -125,3 +127,88 @@ class CatalogResult(_StrictModel):
         description="Every cached dataset with its resolvable per-dataset resource URI."
     )
     count: int = Field(description="Number of cached datasets.")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3 strategy-authoring list wrappers + result models
+#
+# The strategy package returns *lists* (templates, saved strategies, the
+# indicator whitelist). FastMCP structured output needs a top-level object, so
+# each list result is wrapped here with a ``count``. ``CreateStrategyResult`` and
+# ``DeleteResult`` carry a small object payload for the create/delete tools; the
+# ``StrategySpec`` and ``ValidationReport`` are already object models and are
+# returned directly by the get/validate tools.
+# --------------------------------------------------------------------------- #
+class TemplatesResult(_StrictModel):
+    """Result of ``list_strategy_templates``: the starter template library."""
+
+    templates: list[TemplateInfo] = Field(
+        description="Metadata for every strategy template (id, title, summary, "
+        "strategy_type, overridable fields) -- starting points for authoring."
+    )
+    count: int = Field(description="Number of templates.")
+
+
+class IndicatorsResult(_StrictModel):
+    """Result of ``list_indicators``: the closed indicator whitelist."""
+
+    indicators: list[IndicatorInfo] = Field(
+        description="Every whitelisted indicator kind with its params (and defaults) and "
+        "output-name suffixes. Rules may reference ONLY these indicator outputs."
+    )
+    count: int = Field(description="Number of whitelisted indicator kinds.")
+
+
+class StrategiesResult(_StrictModel):
+    """Result of ``list_strategies``: the saved-strategy catalog."""
+
+    strategies: list[StrategyInfo] = Field(
+        description="Listing summary of every saved strategy (name, exchange, symbol, "
+        "timeframe, strategy_type, schema_version, created/updated timestamps)."
+    )
+    count: int = Field(description="Number of saved strategies.")
+
+
+class CreateStrategyResult(_StrictModel):
+    """Result of ``create_strategy`` / ``update_strategy``: the saved spec + its listing info."""
+
+    spec: StrategySpec = Field(description="The validated, persisted strategy spec.")
+    info: StrategyInfo = Field(
+        description="The persisted listing summary (name is the identity/key; carries "
+        "created/updated timestamps)."
+    )
+
+
+class DeleteResult(_StrictModel):
+    """Result of ``delete_strategy``: which strategy was targeted and whether it existed."""
+
+    name: str = Field(description="The strategy name that was targeted for deletion.")
+    deleted: bool = Field(
+        description="True if a saved strategy existed and was removed; False if none matched."
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3 strategy-catalog resource models
+#
+# The ``strategy://catalog`` MCP resource returns a *richer* view than the
+# ``list_strategies`` tool: each entry carries the resolvable per-strategy
+# resource URI (``strategy://{slug}``) so clients can discover the exact
+# ``strategy://...`` to read. Mirrors the dataset-catalog idiom.
+# --------------------------------------------------------------------------- #
+class StrategyCatalogEntry(StrategyInfo):
+    """A strategy-catalog entry: a :class:`StrategyInfo` plus its resolvable resource URI."""
+
+    resource_uri: str = Field(
+        description="Resolvable per-strategy resource URI (slugified name), e.g. "
+        "'strategy://ma-cross-btc'."
+    )
+
+
+class StrategyCatalogResult(_StrictModel):
+    """Payload of the ``strategy://catalog`` resource: URI-tagged saved strategies."""
+
+    strategies: list[StrategyCatalogEntry] = Field(
+        description="Every saved strategy with its resolvable per-strategy resource URI."
+    )
+    count: int = Field(description="Number of saved strategies.")
