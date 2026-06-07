@@ -152,8 +152,8 @@ async def test_phase5_tools_advertise_structured_output_schema() -> None:
         assert tool.outputSchema.get("type") == "object"
 
 
-async def test_tool_count_is_39() -> None:
-    assert len(await build_app().list_tools()) == 39
+async def test_tool_count_is_45() -> None:
+    assert len(await build_app().list_tools()) == 45
 
 
 # --------------------------------------------------------------------------- #

@@ -131,19 +131,25 @@ async def _start_paper(app: Any) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Safe-by-default: no arming / live surface
+# Phase 6 guardrails-only: the safety tools exist, but the live WALL stays shut
 # --------------------------------------------------------------------------- #
-async def test_phase5_exposes_no_arming_or_live_tool() -> None:
-    """The Phase-6 wall: Phase 5 ships no arm/kill/live-trading/risk-limit tool."""
+async def test_phase6_exposes_guardrails_but_no_live_order_path() -> None:
+    """Guardrails-only: the safety surface lands, but no live-order tool exists.
+
+    Phase 6 adds ``set_risk_limits`` / ``arm_live_trading`` / ``kill_switch`` (and
+    their companions), but the live wall is untouched: there is NO ``place_live_order``
+    / ``deploy_live`` tool, and ``arm_live_trading`` only records state no live path
+    consumes yet (asserted by the safety-tools suite).
+    """
     names = {t.name for t in await build_app().list_tools()}
-    assert names.isdisjoint(
-        {"arm_live_trading", "kill_switch", "set_risk_limits", "place_live_order"}
-    )
+    assert {"set_risk_limits", "arm_live_trading", "kill_switch"} <= names
+    # The live order path remains unbuilt -- no tool routes a real-money order.
+    assert names.isdisjoint({"place_live_order", "deploy_live", "place_real_order"})
 
 
-async def test_tool_count_is_exactly_39() -> None:
+async def test_tool_count_is_exactly_45() -> None:
     names = [t.name for t in await build_app().list_tools()]
-    assert len(names) == 39, sorted(names)
+    assert len(names) == 45, sorted(names)
     # No duplicate registrations.
     assert len(set(names)) == len(names)
 

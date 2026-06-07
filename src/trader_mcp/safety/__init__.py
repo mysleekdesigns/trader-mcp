@@ -25,17 +25,34 @@ The secret-handling and key-*scoping* primitives that back this invariant live i
 
 from __future__ import annotations
 
+from trader_mcp.safety.arming import (
+    DEFAULT_ARM_TTL_SECONDS,
+    GLOBAL_SCOPE,
+    MAX_ARM_TTL_SECONDS,
+    REQUIRED_CONFIRMATION,
+    ArmingRegistry,
+    ArmTicket,
+)
+from trader_mcp.safety.audit import AuditEntry, AuditLog
+from trader_mcp.safety.controller import SafetyController, SafetyStatus
 from trader_mcp.safety.idempotency import (
     COID_PREFIX,
     IdempotencyRegistry,
     OrderSide,
     make_client_order_id,
 )
+from trader_mcp.safety.kill_switch import KillSwitchState
 from trader_mcp.safety.policy import (
     GateDecision,
     SessionMode,
     evaluate_order,
     global_dry_run,
+)
+from trader_mcp.safety.risk import (
+    OrderRiskContext,
+    RiskCheck,
+    RiskLimits,
+    check_order_risk,
 )
 from trader_mcp.safety.scoping import (
     JURISDICTION_DISCLAIMER,
@@ -52,16 +69,31 @@ SAFE_BY_DEFAULT = True
 
 __all__ = [
     "COID_PREFIX",
+    "DEFAULT_ARM_TTL_SECONDS",
+    "GLOBAL_SCOPE",
     "JURISDICTION_DISCLAIMER",
+    "MAX_ARM_TTL_SECONDS",
+    "REQUIRED_CONFIRMATION",
     "SAFE_BY_DEFAULT",
     "US_ELIGIBLE_EXCHANGES",
     "US_PERP_EXCHANGES",
+    "ArmTicket",
+    "ArmingRegistry",
+    "AuditEntry",
+    "AuditLog",
     "GateDecision",
     "IdempotencyRegistry",
+    "KillSwitchState",
     "MarketType",
+    "OrderRiskContext",
     "OrderSide",
+    "RiskCheck",
+    "RiskLimits",
+    "SafetyController",
+    "SafetyStatus",
     "SessionMode",
     "check_jurisdiction",
+    "check_order_risk",
     "evaluate_order",
     "global_dry_run",
     "make_client_order_id",

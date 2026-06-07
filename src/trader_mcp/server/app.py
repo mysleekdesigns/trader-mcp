@@ -23,14 +23,22 @@ Builds the :class:`FastMCP` server (via the SDK-isolation wrapper in
     * the Phase 5 paper/testnet execution tools (via
       :func:`trader_mcp.server.execution.register_execution_tools`) and the
       portfolio/analytics tools (via
-      :func:`trader_mcp.server.portfolio.register_portfolio_tools`).
+      :func:`trader_mcp.server.portfolio.register_portfolio_tools`);
+    * the Phase 6 guardrails-only safety tools (via
+      :func:`trader_mcp.server.safety.register_safety_tools`) -- ``set_risk_limits``,
+      ``arm_live_trading``, ``disarm_live_trading``, ``kill_switch``,
+      ``get_safety_status``, ``get_audit_log`` -- wired against the single
+      process-wide :class:`~trader_mcp.safety.SafetyController`. These configure and
+      observe the safety machinery; they do NOT open the live wall (no ``live``
+      session mode; ``arm_live_trading`` records state no live path consumes yet).
 
 ``build_app`` is the single registration point. It constructs exactly one
 process-wide :class:`~trader_mcp.exchanges.ExchangeManager`, one process-wide
 :class:`~trader_mcp.data.OHLCVStore`, one process-wide
 :class:`~trader_mcp.strategy.StrategyStore`, one process-wide
-:class:`~trader_mcp.engine.BacktestStore`, and one process-wide
-:class:`~trader_mcp.execution.SessionRegistry`, and wires a FastMCP lifespan that
+:class:`~trader_mcp.engine.BacktestStore`, one process-wide
+:class:`~trader_mcp.execution.SessionRegistry`, and one process-wide
+:class:`~trader_mcp.safety.SafetyController`, and wires a FastMCP lifespan that
 stops any running execution sessions and closes the manager's cached adapters on
 shutdown -- this keeps the SDK behind ``_sdk`` (the lifespan is passed through
 ``create_fastmcp``). The stores use short-lived file/DuckDB handles (no persistent
@@ -49,8 +57,9 @@ from trader_mcp import __version__
 from trader_mcp.data import OHLCVStore
 from trader_mcp.engine import BacktestStore
 from trader_mcp.exchanges import ExchangeManager
-from trader_mcp.execution import SessionRegistry
+from trader_mcp.execution import PaperBroker, SessionRegistry
 from trader_mcp.logging_config import get_logger
+from trader_mcp.safety import SafetyController
 from trader_mcp.server._sdk import FastMCP, create_fastmcp
 from trader_mcp.server.backtest import register_backtest_tools
 from trader_mcp.server.execution import register_execution_tools
@@ -63,6 +72,7 @@ from trader_mcp.server.resources import (
     register_dataset_resources,
     register_strategy_resources,
 )
+from trader_mcp.server.safety import register_safety_tools
 from trader_mcp.server.schemas import HealthCheckResult, ServerStatusResult
 from trader_mcp.server.strategy import register_strategy_tools
 from trader_mcp.strategy import StrategyStore
@@ -94,9 +104,10 @@ def build_app() -> FastMCP:
     Registers the Phase 0 admin tools, the Phase 1 market-data tools, the Phase 2
     historical data-sync tools + cached-dataset resources, the Phase 3
     strategy-authoring tools + saved-strategy resources + guided design prompts,
-    the Phase 4 backtest & optimize tools + saved-backtest-report resources, and
-    the Phase 5 paper/testnet execution tools + portfolio/analytics tools.
-    Constructs exactly one process-wide
+    the Phase 4 backtest & optimize tools + saved-backtest-report resources, the
+    Phase 5 paper/testnet execution tools + portfolio/analytics tools, and the
+    Phase 6 guardrails-only safety tools (risk limits, arm/disarm, kill switch,
+    safety status, audit log). Constructs exactly one process-wide
     :class:`~trader_mcp.exchanges.ExchangeManager`, one
     :class:`~trader_mcp.data.OHLCVStore`, one
     :class:`~trader_mcp.strategy.StrategyStore`, one
@@ -129,6 +140,16 @@ def build_app() -> FastMCP:
     # state is entirely in memory (no filesystem). The lifespan stops any running
     # sessions on shutdown so no run loop outlives the server.
     session_registry = SessionRegistry()
+    # One process-wide safety controller (Phase 6): risk limits + the (expiring,
+    # confirmation-gated) live-arming state machine + the kill switch + the redacted
+    # audit log. ``place_order`` runs every intent through ``controller.preflight``;
+    # the safety tools configure/observe it. Guardrails-only -- no live wall is opened
+    # here (``arm_live_trading`` records state that no live path consumes yet).
+    controller = SafetyController()
+    # The MANUAL paper brokers (orders on an undeployed session) live in the execution
+    # tool closure. Build the mapping HERE and share it with both lanes so the kill
+    # switch's cancel-all can also reach open manual paper orders.
+    manual_brokers: dict[str, PaperBroker] = {}
 
     @asynccontextmanager
     async def _lifespan(_app: FastMCP) -> AsyncIterator[None]:
@@ -192,13 +213,22 @@ def build_app() -> FastMCP:
     register_strategy_prompts(app)
     register_backtest_tools(app, strategy_store, store, backtest_store)
     register_backtest_resources(app, backtest_store)
-    register_execution_tools(app, manager, session_registry, strategy_store, store)
+    register_execution_tools(
+        app,
+        manager,
+        session_registry,
+        strategy_store,
+        store,
+        controller,
+        manual_brokers,
+    )
     register_portfolio_tools(app, session_registry)
+    register_safety_tools(app, controller, session_registry, manual_brokers)
 
     logger.debug(
         "Built FastMCP app '%s' with admin + market-data + historical + strategy + "
-        "backtest + execution + portfolio tools, dataset + strategy + backtest "
-        "resources, and strategy prompts registered.",
+        "backtest + execution + portfolio + safety tools, dataset + strategy + "
+        "backtest resources, and strategy prompts registered.",
         SERVER_NAME,
     )
     return app

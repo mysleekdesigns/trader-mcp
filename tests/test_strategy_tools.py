@@ -109,17 +109,17 @@ async def test_phase3_tools_advertise_structured_output_schema() -> None:
         assert tool.outputSchema.get("type") == "object"
 
 
-async def test_no_live_arming_tools_introduced() -> None:
-    """No Phase-6 live-arming/kill-switch surface exists yet (safe-by-default).
+async def test_no_live_order_path_introduced() -> None:
+    """The live WALL stays shut even after the Phase-6 guardrails land.
 
-    Phase 5 legitimately adds gated, dry-run-by-default ``place_order``/
-    ``deploy_strategy``; the still-true invariant is that the real-money arming and
-    kill-switch tools do not land until Phase 6.
+    Phase 6 adds the guardrails-only safety surface (``arm_live_trading`` /
+    ``kill_switch`` / ``set_risk_limits``), but those configure/observe state only --
+    no real-money order path exists: there is no ``place_live_order`` / ``deploy_live``
+    tool, and ``arm_live_trading`` gates nothing yet (deferred to live certification).
     """
     built = build_app()
     names = {t.name for t in await built.list_tools()}
-    forbidden = {"arm_live_trading", "kill_switch"}
-    assert names.isdisjoint(forbidden)
+    assert names.isdisjoint({"place_live_order", "deploy_live", "place_real_order"})
 
 
 # --------------------------------------------------------------------------- #

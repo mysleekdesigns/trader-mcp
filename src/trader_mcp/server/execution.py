@@ -45,12 +45,14 @@ re-exported from :mod:`trader_mcp.server._sdk`; this module never ``import mcp``
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from trader_mcp.config import ExchangeId, KeyScope
 from trader_mcp.data import DatasetKey, OHLCVStore
+from trader_mcp.errors import SafetyError
 from trader_mcp.exchanges import ExchangeManager, Order
 from trader_mcp.execution import (
     OrderIntent,
@@ -63,8 +65,10 @@ from trader_mcp.execution import (
     SessionStatus,
 )
 from trader_mcp.safety import (
+    AuditEntry,
     IdempotencyRegistry,
-    evaluate_order,
+    OrderRiskContext,
+    SafetyController,
     make_client_order_id,
 )
 from trader_mcp.safety import (
@@ -146,7 +150,6 @@ def _order_to_record(order: Order, *, reason: Literal["manual"] = "manual") -> O
     else:
         status = "open"
     fee_cost = order.fee.cost if order.fee is not None else None
-    from datetime import UTC, datetime
 
     return OrderRecord(
         order_id=order.id or "",
@@ -188,13 +191,19 @@ def register_execution_tools(
     session_registry: SessionRegistry,
     strategy_store: StrategyStore,
     store: OHLCVStore,
+    controller: SafetyController,
+    manual_brokers: dict[str, PaperBroker] | None = None,
 ) -> None:
     """Register the Phase 5 paper/testnet execution tools on ``app``.
 
     The tool callables close over the process-wide exchange manager (testnet
     routing + reads), the in-memory session registry (lifecycle), the saved-strategy
-    store (``deploy_strategy``'s spec source), and the local OHLCV cache (the paper
-    replay feed). This is the only place these tools are registered; ``build_app``
+    store (``deploy_strategy``'s spec source), the local OHLCV cache (the paper
+    replay feed), and -- as of Phase 6 -- the single process-wide
+    :class:`~trader_mcp.safety.SafetyController`: ``place_order`` runs every intent
+    through :meth:`SafetyController.preflight` (kill switch -> risk limits -> the
+    gate, fail-closed) and records an ``order_result`` audit entry after the order
+    resolves. This is the only place these tools are registered; ``build_app``
     invokes it.
 
     Args:
@@ -203,12 +212,21 @@ def register_execution_tools(
         session_registry: The shared in-memory execution-session registry.
         strategy_store: The shared local strategy store ``deploy_strategy`` loads from.
         store: The shared local OHLCV cache the paper replay feed reads from.
+        controller: The shared process-wide safety controller; the order chokepoint
+            (risk limits + kill switch + gate) and the order audit trail.
+        manual_brokers: An optional caller-provided mapping for the MANUAL paper
+            brokers (orders placed on an undeployed session). ``build_app`` passes the
+            same mapping to :func:`register_safety_tools` so the kill switch can cancel
+            open manual paper orders. ``None`` creates a private dict (manual orders
+            still work; they are just not reachable by an external cancel-all).
     """
 
     # Bare paper brokers for MANUAL orders placed on a session that has no strategy
     # deployed (a deployed session uses the strategy's own broker via the registry).
-    # Kept in the tool closure so the execution package / registry stays untouched.
-    manual_brokers: dict[str, PaperBroker] = {}
+    # Shared with the safety lane (the kill switch's cancel-all) when ``build_app``
+    # passes the same mapping in; otherwise a private dict keeps manual orders working.
+    if manual_brokers is None:
+        manual_brokers = {}
 
     # Idempotency for manual ``place_order`` calls. A per-session monotonic counter
     # feeds ``make_client_order_id(seq=...)`` so each distinct order on the same
@@ -253,6 +271,27 @@ def register_execution_tools(
         """Return the session's broker for a read-only query (no lazy creation)."""
         return session_registry.broker_for(session_id) or manual_brokers.get(session_id)
 
+    def _audit_order_result(mode: str, exchange: str, record: OrderRecord, decision: str) -> None:
+        """Record a redacted ``order_result`` audit entry after an order resolves.
+
+        ``detail`` carries only non-secret material (the COID is an idempotency key,
+        not a secret); the audit log redacts the free text on record regardless.
+        """
+        controller.audit.record(
+            AuditEntry(
+                timestamp=datetime.now(tz=UTC),
+                event="order_result",
+                mode=mode,
+                exchange=exchange,
+                symbol=record.symbol,
+                side=record.side,
+                amount=record.amount,
+                decision=decision,
+                outcome=record.status,
+                detail=f"coid={record.client_order_id} simulated={record.simulated}",
+            )
+        )
+
     @app.tool(
         name="start_session",
         title="Start an execution session",
@@ -295,6 +334,12 @@ def register_execution_tools(
             "ONLY when the key is trade-enabled, the venue/market is US-eligible, AND the "
             "global dry-run default is off -- otherwise it is downgraded to simulate. live "
             "is not a valid session mode. A denied order raises a redacted safety error. "
+            "Risk limits (set_risk_limits) are enforced here BEFORE the gate. NOTE on "
+            "notional caps (max_order_notional / max_position_notional): they need a known "
+            "price -- a limit order's price, or a session with market data (a live position "
+            "mark). A MARKET order with no derivable price is DENIED while a notional cap is "
+            "set (fail-closed) rather than evaluated against a meaningless zero; pass a price "
+            "or place on a session with market data. "
             "Each order gets a distinct, deterministic client order id; pass an explicit "
             "seq to make a retry idempotent (a resubmission with the same seq is deduped "
             "and returns the prior result). Returns the resulting OrderRecord "
@@ -329,6 +374,10 @@ def register_execution_tools(
         """
         info = session_registry.get(session_id)
         market_type = _market_type_for(symbol)
+        # The OrderRecord/paper-fill notional keeps the prior behaviour: a market order
+        # with no price contributes 0.0 (we do not invent a reference price here). The
+        # RISK-CONTEXT notional is computed separately below from a derived reference
+        # price so a notional cap cannot be silently bypassed by a 0.0.
         notional = amount * (price if price is not None else 0.0)
 
         # Resolve key scope: testnet needs a real adapter/credential; paper does not
@@ -339,13 +388,78 @@ def register_execution_tools(
         else:
             key_scope = KeyScope.READ_ONLY
 
-        decision = evaluate_order(
+        # Build the risk context from the session's broker state where cheap. The
+        # broker may not exist yet (no order placed / not deployed) -> treat as flat.
+        risk_broker = _read_paper_broker(session_id)
+        positions = risk_broker.positions() if risk_broker is not None else []
+        open_positions = len(positions)
+        # ``opens_new_position`` heuristic: an order with no current position opens one.
+        opens_new_position = open_positions == 0
+
+        # Derive a reference price for the NOTIONAL risk context. A market order's
+        # OrderRecord notional may legitimately be 0.0 (no price), but feeding 0.0 into
+        # ``check_order_risk`` would make ``max_order_notional`` / ``max_position_notional``
+        # un-trippable (0.0 > cap is always False) -- silently bypassing a cap the
+        # ``set_risk_limits`` tool advertises as enforced. So: use the order price when
+        # given (limit orders), else the open position's live mark (a session with market
+        # data). If a notional cap is set and we can derive NO price for a market order,
+        # FAIL CLOSED rather than evaluate against a meaningless 0.0.
+        limits = controller.get_risk_limits()
+        has_notional_cap = (
+            limits.max_order_notional is not None or limits.max_position_notional is not None
+        )
+        ref_price = price if price is not None else (positions[0].mark_price if positions else None)
+        if price is None and ref_price is None and has_notional_cap:
+            reason = (
+                "cannot evaluate notional risk limit for a market order without a known "
+                "price; pass a price or place on a session with market data"
+            )
+            controller.audit.record(
+                AuditEntry(
+                    timestamp=datetime.now(tz=UTC),
+                    event="denied",
+                    mode=info.mode,
+                    exchange=info.exchange,
+                    symbol=symbol,
+                    side=side,
+                    amount=amount,
+                    decision="deny",
+                    detail=reason,
+                )
+            )
+            raise SafetyError(reason, details={"mode": info.mode})
+        # Risk-context notional: derived price * amount (falls back to the prior 0.0 only
+        # when no notional cap is configured, so unrelated paths are unperturbed).
+        risk_notional = amount * (ref_price if ref_price is not None else 0.0)
+
+        # ``resulting_position_notional`` is a conservative proxy: we use this order's
+        # (derived) notional rather than reconstructing the post-fill position notional
+        # (which would need a fill simulation here). It never under-reports for a flat book.
+        # ``realized_loss_today`` is a best-effort: the magnitude of realized loss so
+        # far this session (a per-UTC-day breakdown is a noted follow-up; the engine
+        # still enforces every other limit). 0.0 when there is no broker.
+        realized_loss_today = 0.0
+        if risk_broker is not None:
+            realized = risk_broker.pnl().realized
+            realized_loss_today = -realized if realized < 0 else 0.0
+        risk_ctx = OrderRiskContext(
+            order_notional=risk_notional,
+            open_positions=open_positions,
+            resulting_position_notional=risk_notional,
+            realized_loss_today=realized_loss_today,
+            opens_new_position=opens_new_position,
+        )
+
+        decision = controller.preflight(
             mode=GateSessionMode(info.mode),
             exchange=info.exchange,
+            symbol=symbol,
             market_type=market_type,
             key_scope=key_scope,
+            side=side,
             amount=amount,
             notional=notional,
+            risk_ctx=risk_ctx,
         )
         decision.raise_if_denied()
 
@@ -378,6 +492,7 @@ def register_execution_tools(
             broker = _paper_broker_for(session_id, symbol)
             record = broker.submit(intent, ref_price=price)
             order_results[coid] = record
+            _audit_order_result(info.mode, info.exchange, record, decision.action)
             return record
 
         # decision.action == "route": testnet only (gate guarantees this).
@@ -396,6 +511,7 @@ def register_execution_tools(
         )
         record = _order_to_record(order)
         order_results[coid] = record
+        _audit_order_result(info.mode, info.exchange, record, decision.action)
         return record
 
     @app.tool(
@@ -618,8 +734,6 @@ def _position_to_paper(position: object) -> PaperPosition:
     Best-effort mapping so testnet ``get_positions`` shares the paper ``outputSchema``.
     Missing optional CCXT fields default to zero/None.
     """
-    from datetime import UTC, datetime
-
     from trader_mcp.exchanges.models import Position as _Position
 
     assert isinstance(position, _Position)

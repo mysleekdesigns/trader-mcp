@@ -173,6 +173,12 @@ def evaluate_order(
 
     if resolved_mode is SessionMode.LIVE:
         # The hard Phase-6 wall. Armed flag and scope are irrelevant here.
+        #
+        # The Phase-6 arming state machine (:mod:`trader_mcp.safety.arming`,
+        # :class:`~trader_mcp.safety.controller.SafetyController`) is BUILT and
+        # unit-tested but is deliberately NOT consulted here: ``live`` denies
+        # unconditionally. Opening this wall on an active arm ticket is the
+        # DEFERRED certification step -- do not route on ``armed`` until then.
         return GateDecision(
             action="deny",
             mode=resolved_mode,

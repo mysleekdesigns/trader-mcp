@@ -132,7 +132,7 @@ async def test_all_thirty_nine_tools_registered() -> None:
         "get_pnl",
         "get_trade_history",
     } <= names
-    assert len(names) == 39
+    assert len(names) == 45
 
 
 async def test_phase1_tools_advertise_structured_output_schema() -> None:
