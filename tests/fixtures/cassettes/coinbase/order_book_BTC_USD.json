@@ -1,0 +1,9 @@
+{
+  "_comment": "Sanitized CCXT fetch_order_book('BTC/USD') for Coinbase: bids descending, asks ascending, best bid < best ask. No keys/PII.",
+  "symbol": "BTC/USD",
+  "timestamp": 1704164645000,
+  "datetime": "2024-01-02T03:04:05.000Z",
+  "nonce": null,
+  "bids": [[62500.5, 0.8421], [62500.0, 1.2], [62499.5, 0.5]],
+  "asks": [[62501.0, 0.65], [62501.5, 1.1], [62502.0, 2.0]]
+}

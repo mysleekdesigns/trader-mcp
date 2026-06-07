@@ -1,0 +1,17 @@
+{
+  "_comment": "Sanitized CCXT fetch_ticker('BTC/USD') for Kraken. No keys/PII.",
+  "symbol": "BTC/USD",
+  "timestamp": 1704164645000,
+  "datetime": "2024-01-02T03:04:05.000Z",
+  "high": 63300.0,
+  "low": 61750.0,
+  "bid": 62498.0,
+  "ask": 62499.5,
+  "last": 62499.0,
+  "open": 61999.0,
+  "close": 62499.0,
+  "baseVolume": 1320.55,
+  "quoteVolume": 82500000.0,
+  "change": 500.0,
+  "percentage": 0.81
+}

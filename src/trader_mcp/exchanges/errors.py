@@ -28,6 +28,11 @@ TRANSIENT_CCXT_ERRORS: tuple[type[Exception], ...] = (
     ccxt.NetworkError,
     ccxt.RequestTimeout,
     ccxt.ExchangeNotAvailable,
+    # OnMaintenance subclasses ExchangeNotAvailable (so it is already covered by
+    # inheritance); listed explicitly so a scheduled-maintenance window is plainly
+    # documented as transient -- the adapter retries with backoff rather than failing
+    # the call outright, and only raises a typed ExchangeError once retries exhaust.
+    ccxt.OnMaintenance,
     ccxt.DDoSProtection,
     ccxt.RateLimitExceeded,
 )

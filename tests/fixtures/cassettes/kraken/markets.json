@@ -1,0 +1,37 @@
+{
+  "_comment": "Sanitized CCXT load_markets() output for Kraken (non-reference smoke exchange). No keys/PII.",
+  "BTC/USD": {
+    "symbol": "BTC/USD",
+    "base": "BTC",
+    "quote": "USD",
+    "settle": null,
+    "type": "spot",
+    "spot": true,
+    "swap": false,
+    "active": true,
+    "contractSize": null,
+    "linear": null,
+    "inverse": null,
+    "precision": {"price": 0.1, "amount": 1e-08},
+    "limits": {"amount": {"min": 0.0001, "max": null}, "cost": {"min": 0.5}},
+    "maker": 0.0016,
+    "taker": 0.0026
+  },
+  "ETH/USD": {
+    "symbol": "ETH/USD",
+    "base": "ETH",
+    "quote": "USD",
+    "settle": null,
+    "type": "spot",
+    "spot": true,
+    "swap": false,
+    "active": true,
+    "contractSize": null,
+    "linear": null,
+    "inverse": null,
+    "precision": {"price": 0.01, "amount": 1e-08},
+    "limits": {"amount": {"min": 0.0001, "max": null}, "cost": {"min": 0.5}},
+    "maker": 0.0016,
+    "taker": 0.0026
+  }
+}

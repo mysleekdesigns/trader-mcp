@@ -36,9 +36,9 @@ Public surface (the integration contract):
 
     Typed models:
         * :class:`ExecutionConfig`, :class:`OrderIntent`, :class:`OrderRecord`,
-          :class:`PaperPosition`, :class:`PaperBalance`, :class:`Portfolio`,
-          :class:`PnLBreakdown`, :class:`TradeRecord`, :class:`SessionInfo`,
-          :class:`SessionStatus`
+          :class:`FillEvent` (+ :func:`aggregate_fills`), :class:`PaperPosition`,
+          :class:`PaperBalance`, :class:`Portfolio`, :class:`PnLBreakdown`,
+          :class:`TradeRecord`, :class:`SessionInfo`, :class:`SessionStatus`
         * Literals: :data:`SessionMode`, :data:`SessionState`, :data:`OrderSide`,
           :data:`OrderType`, :data:`OrderStatus`, :data:`IntentReason`,
           :data:`PositionSide`
@@ -48,6 +48,7 @@ from __future__ import annotations
 
 from trader_mcp.execution.models import (
     ExecutionConfig,
+    FillEvent,
     IntentReason,
     OrderIntent,
     OrderRecord,
@@ -64,6 +65,7 @@ from trader_mcp.execution.models import (
     SessionState,
     SessionStatus,
     TradeRecord,
+    aggregate_fills,
 )
 from trader_mcp.execution.paper_broker import PaperBroker
 from trader_mcp.execution.runtime import BarFeed, BrokerProtocol, StrategyRuntime
@@ -73,6 +75,7 @@ __all__ = [
     "BarFeed",
     "BrokerProtocol",
     "ExecutionConfig",
+    "FillEvent",
     "IntentReason",
     "OrderIntent",
     "OrderRecord",
@@ -92,4 +95,5 @@ __all__ = [
     "SessionStatus",
     "StrategyRuntime",
     "TradeRecord",
+    "aggregate_fills",
 ]

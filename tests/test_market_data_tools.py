@@ -95,10 +95,12 @@ def app_with_fake(monkeypatch: pytest.MonkeyPatch, no_credentials: None) -> Any:
 # Registration + schema advertisement
 # --------------------------------------------------------------------------- #
 async def test_all_thirty_nine_tools_registered() -> None:
-    """2 admin + 9 P1 + 3 P2 + 8 P3 + 5 P4 + 12 P5 execution/portfolio tools = 39."""
+    """2 admin + 1 P7 admin (check_clock_skew) + 9 P1 + 3 P2 + 8 P3 + 5 P4 +
+    12 P5 execution/portfolio + 6 P6 safety tools = 46.
+    """
     app = build_app()
     names = set(await _tools_by_name(app))
-    assert {"health_check", "get_server_status"} <= names
+    assert {"health_check", "get_server_status", "check_clock_skew"} <= names
     assert set(PHASE1_TOOLS) <= names
     assert {"sync_history", "list_cached_datasets", "inspect_dataset"} <= names
     assert {
@@ -132,7 +134,7 @@ async def test_all_thirty_nine_tools_registered() -> None:
         "get_pnl",
         "get_trade_history",
     } <= names
-    assert len(names) == 45
+    assert len(names) == 46
 
 
 async def test_phase1_tools_advertise_structured_output_schema() -> None:

@@ -147,9 +147,9 @@ async def test_phase6_exposes_guardrails_but_no_live_order_path() -> None:
     assert names.isdisjoint({"place_live_order", "deploy_live", "place_real_order"})
 
 
-async def test_tool_count_is_exactly_45() -> None:
+async def test_tool_count_is_exactly_46() -> None:
     names = [t.name for t in await build_app().list_tools()]
-    assert len(names) == 45, sorted(names)
+    assert len(names) == 46, sorted(names)
     # No duplicate registrations.
     assert len(set(names)) == len(names)
 

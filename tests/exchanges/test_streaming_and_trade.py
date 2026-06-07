@@ -317,6 +317,55 @@ async def test_watch_reconnects_on_transient_then_succeeds(
     assert client.calls["watch_ohlcv"] == 2
 
 
+async def test_watch_backoff_is_bounded_by_ceiling(
+    patch_pro_client: Callable[..., FakeProCcxt],
+    no_sleep_ws: list[float],
+) -> None:
+    """Consecutive WS transient faults back off exponentially but never past the ceiling."""
+    client = patch_pro_client()
+    # Enough consecutive transient faults that exponential growth would exceed the
+    # ceiling, then one real update so the stream recovers and the loop exits.
+    client.ohlcv_updates = [ccxt_error("network", leak=False) for _ in range(8)]
+    client.ohlcv_updates.append(_ohlcv_update())
+    adapter = await ExchangeAdapter.create("coinbase")
+    async with adapter:
+        bars = await _collect(adapter.watch_ohlcv("BTC/USD", "1m"), 1)
+    assert len(bars) == 1
+    # First delay is the base; delays are non-decreasing and clamped at the ceiling.
+    assert no_sleep_ws[0] == adapter_module.WS_BACKOFF_BASE_SECONDS
+    assert all(d <= adapter_module.WS_BACKOFF_MAX_SECONDS for d in no_sleep_ws)
+    assert max(no_sleep_ws) == adapter_module.WS_BACKOFF_MAX_SECONDS
+    # Exponential schedule, each term capped at the ceiling.
+    expected = [
+        min(adapter_module.WS_BACKOFF_BASE_SECONDS * (2**i), adapter_module.WS_BACKOFF_MAX_SECONDS)
+        for i in range(8)
+    ]
+    assert no_sleep_ws == expected
+
+
+async def test_watch_backoff_streak_resets_between_episodes(
+    patch_pro_client: Callable[..., FakeProCcxt],
+    no_sleep_ws: list[float],
+) -> None:
+    """A successful update resets the reconnect streak, so a later fault backs off at base again."""
+    client = patch_pro_client()
+    client.ohlcv_updates = [
+        ccxt_error("network", leak=False),  # fault #1 -> base delay
+        ccxt_error("network", leak=False),  # fault #2 -> 2x base delay
+        _ohlcv_update(),  # success -> streak resets to 0
+        ccxt_error("network", leak=False),  # fault again -> base delay (not 4x)
+        _ohlcv_update(),  # success
+    ]
+    adapter = await ExchangeAdapter.create("coinbase")
+    async with adapter:
+        bars = await _collect(adapter.watch_ohlcv("BTC/USD", "1m"), 2)
+    assert len(bars) == 2
+    base = adapter_module.WS_BACKOFF_BASE_SECONDS
+    # First episode: base, 2x base. After the success the streak resets, so the
+    # next fault backs off at base again rather than continuing the exponent.
+    assert no_sleep_ws == [base, base * 2, base]
+
+
 async def test_watch_reraises_non_transient_mapped(
     patch_pro_client: Callable[..., FakeProCcxt],
     no_sleep_ws: list[float],

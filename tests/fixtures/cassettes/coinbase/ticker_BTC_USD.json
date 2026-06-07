@@ -1,0 +1,17 @@
+{
+  "_comment": "Sanitized CCXT fetch_ticker('BTC/USD') for Coinbase. No keys/PII.",
+  "symbol": "BTC/USD",
+  "timestamp": 1704164645000,
+  "datetime": "2024-01-02T03:04:05.000Z",
+  "high": 63250.12,
+  "low": 61800.0,
+  "bid": 62500.5,
+  "ask": 62501.0,
+  "last": 62500.75,
+  "open": 62000.0,
+  "close": 62500.75,
+  "baseVolume": 8421.3214,
+  "quoteVolume": 528000000.0,
+  "change": 500.75,
+  "percentage": 0.81
+}

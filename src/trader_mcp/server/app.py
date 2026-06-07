@@ -54,9 +54,10 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from trader_mcp import __version__
+from trader_mcp.config import ExchangeId
 from trader_mcp.data import OHLCVStore
 from trader_mcp.engine import BacktestStore
-from trader_mcp.exchanges import ExchangeManager
+from trader_mcp.exchanges import ClockSkew, ExchangeManager
 from trader_mcp.execution import PaperBroker, SessionRegistry
 from trader_mcp.logging_config import get_logger
 from trader_mcp.safety import SafetyController
@@ -204,6 +205,27 @@ def build_app() -> FastMCP:
             uptime_seconds=round(time.monotonic() - started_monotonic, 3),
             tool_count=len(tools),
         )
+
+    @app.tool(
+        name="check_clock_skew",
+        title="Check clock skew",
+        description=(
+            "Measure local-vs-exchange clock skew for an exchange (a resilience health "
+            "check). Reads the exchange's public server time and compares it to the local "
+            "clock; a drift past threshold_ms (default 1000ms) marks the result out of "
+            "tolerance. Signed requests fail when the host clock drifts past the venue's "
+            "recvWindow, so this surfaces a misconfigured clock BEFORE it breaks an authed "
+            "read or order. Public, unauthenticated read -- no credentials, no order path."
+        ),
+        structured_output=True,
+    )
+    async def check_clock_skew(
+        exchange: ExchangeId,
+        threshold_ms: float = 1000.0,
+    ) -> ClockSkew:
+        """Measure local-vs-exchange clock skew for ``exchange`` (read-only, no auth)."""
+        adapter = await manager.get(exchange)
+        return await adapter.check_clock_skew(threshold_ms=threshold_ms)
 
     register_market_data_tools(app, manager)
     register_data_tools(app, manager, store)

@@ -22,6 +22,7 @@ from trader_mcp.exchanges.manager import ExchangeManager
 from trader_mcp.exchanges.models import (
     Balance,
     BalanceEntry,
+    ClockSkew,
     CredentialStatus,
     ExchangeCapabilities,
     ExchangeInfo,
@@ -52,6 +53,7 @@ from trader_mcp.exchanges.registry import (
 __all__ = [
     "Balance",
     "BalanceEntry",
+    "ClockSkew",
     "CredentialStatus",
     "ExchangeAdapter",
     "ExchangeCapabilities",

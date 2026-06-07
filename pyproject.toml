@@ -1,6 +1,6 @@
 [project]
 name = "trader-mcp"
-version = "0.0.0"
+version = "0.1.0"
 description = "Terminal-first, AI-native crypto trading platform delivered as a Model Context Protocol (MCP) server."
 readme = "README.md"
 # Runtime/distribution target is Python 3.12 (PRD §4; see .python-version). The
@@ -10,7 +10,7 @@ license = { text = "MIT" }
 authors = [{ name = "Simon Lacey", email = "simon@dashboardhosting.com" }]
 keywords = ["mcp", "trading", "crypto", "ccxt", "backtesting", "coinbase"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
@@ -171,6 +171,7 @@ addopts = "-ra --strict-markers --strict-config"
 filterwarnings = ["error"]
 markers = [
     "live: needs real exchange network access; opt-in, excluded unless --live or TRADER_MCP_LIVE_TESTS=1",
+    "testnet: needs real exchange TESTNET/sandbox credentials; opt-in, excluded unless --testnet or TRADER_MCP_TESTNET_TESTS=1 (never places live orders)",
 ]
 
 [tool.coverage.run]

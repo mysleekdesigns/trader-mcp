@@ -39,12 +39,14 @@ from typing import TYPE_CHECKING
 
 from trader_mcp.execution.models import (
     ExecutionConfig,
+    FillEvent,
     OrderRecord,
     PaperBalance,
     PaperPosition,
     PnLBreakdown,
     Portfolio,
     TradeRecord,
+    aggregate_fills,
 )
 
 if TYPE_CHECKING:
@@ -160,6 +162,7 @@ class PaperBroker:
             status="open",
             amount=intent.amount,
             filled=0.0,
+            remaining=intent.amount,
             average=None,
             fee=0.0,
             timestamp=self._last_bar_time or datetime.now(tz=UTC),
@@ -377,27 +380,62 @@ class PaperBroker:
                 exit_reason=reason,
             )
         )
-        # Record a synthetic fill OrderRecord for the close.
+        # Record a synthetic fill OrderRecord for the close. The simulation fills
+        # atomically: one complete FillEvent (qty == size) that aggregate_fills books
+        # as a fully-filled order (remaining == 0). Routing it through the SAME
+        # aggregation path a live broker uses keeps the accounting identical whether
+        # a fill arrives whole (paper/backtest) or in pieces (a real exchange).
         self._orders.append(
-            OrderRecord(
+            self._fill_record(
                 order_id=f"paper-{next(self._order_seq)}",
                 client_order_id=f"close-{len(self._trades)}",
-                symbol=self.spec.symbol,
                 side="sell" if pos.side == "long" else "buy",
-                type="market",
-                status="filled",
                 amount=pos.size,
-                filled=pos.size,
-                average=exit_px,
-                fee=exit_fee,
+                fills=[FillEvent(qty=pos.size, price=exit_px, fee=exit_fee, timestamp=now)],
                 timestamp=now,
                 reason="stop_loss"
                 if reason == "stop_loss"
                 else ("take_profit" if reason == "take_profit" else "signal"),
-                simulated=True,
             )
         )
         self._pos = None
+
+    def _fill_record(
+        self,
+        *,
+        order_id: str,
+        client_order_id: str,
+        side: str,
+        amount: float,
+        fills: list[FillEvent],
+        timestamp: datetime,
+        reason: IntentReason,
+    ) -> OrderRecord:
+        """Build an :class:`OrderRecord` from ``fills`` via the shared aggregator.
+
+        One accounting path for both a single complete fill (paper/backtest) and a
+        series of partial fills (a future live broker reconciling exchange fill
+        events). ``aggregate_fills`` clamps cumulative ``filled`` to ``amount`` so
+        over-fill is impossible, and resolves the cumulative average price, fee, and
+        status (``open`` / ``partially_filled`` / ``filled``).
+        """
+        filled, remaining, average, fee, status = aggregate_fills(amount=amount, fills=fills)
+        return OrderRecord(
+            order_id=order_id,
+            client_order_id=client_order_id,
+            symbol=self.spec.symbol,
+            side=side,  # type: ignore[arg-type]
+            type="market",
+            status=status,
+            amount=amount,
+            filled=filled,
+            remaining=remaining,
+            average=average,
+            fee=fee,
+            timestamp=timestamp,
+            reason=reason,
+            simulated=True,
+        )
 
     def _accrue_funding(self, mark_px: float) -> None:
         pos = self._pos
@@ -521,8 +559,13 @@ class PaperBroker:
 
     # -- query surface --------------------------------------------------------
     def open_orders(self) -> list[OrderRecord]:
-        """Return acknowledged orders still in the ``open`` (pending) state."""
-        return [o for o in self._orders if o.status == "open"]
+        """Return acknowledged orders still resting (``open`` or ``partially_filled``).
+
+        The simulation only ever produces ``open`` here; ``partially_filled`` is
+        included so a future live broker's resting remainder is still reported as
+        pending, matching the ``cancel`` predicate.
+        """
+        return [o for o in self._orders if o.status in ("open", "partially_filled")]
 
     def order_history(self) -> list[OrderRecord]:
         """Return every order record this broker has produced."""
@@ -615,7 +658,42 @@ class PaperBroker:
     def cancel(self, order_id: str) -> bool:
         """Cancel a still-open (pending) order by id; return whether it was canceled."""
         for idx, o in enumerate(self._orders):
-            if o.order_id == order_id and o.status == "open":
+            if o.order_id == order_id and o.status in ("open", "partially_filled"):
                 self._orders[idx] = o.model_copy(update={"status": "canceled"})
                 return True
         return False
+
+    def apply_fills(self, order_id: str, fills: list[FillEvent]) -> OrderRecord | None:
+        """Reconcile exchange fill events into an existing order's cumulative state.
+
+        THE LIVE-PATH ENTRY POINT for partial fills. A real exchange reports an
+        order's execution as a stream of (possibly partial) :class:`FillEvent` s; a
+        live/testnet broker calls this to fold the LATEST cumulative ``fills`` into
+        the stored :class:`OrderRecord`, updating ``filled``/``remaining``/``average``/
+        ``fee``/``status`` through the SAME :func:`aggregate_fills` math the simulation
+        uses. Over-fill is impossible (cumulative ``filled`` is clamped to the order
+        ``amount``). ``fills`` is the FULL cumulative list for the order (not a
+        delta), so calling it repeatedly as more fills arrive is idempotent in the
+        cumulative sense and a remainder resting after partials reports
+        ``partially_filled`` with the correct ``remaining``.
+
+        Returns the updated record, or ``None`` if the order id is unknown. The paper
+        simulation never calls this (it fills atomically); it exists so the live
+        broker shares one accounting path and parity is structurally guaranteed.
+        """
+        for idx, o in enumerate(self._orders):
+            if o.order_id != order_id:
+                continue
+            filled, remaining, average, fee, status = aggregate_fills(amount=o.amount, fills=fills)
+            updated = o.model_copy(
+                update={
+                    "filled": filled,
+                    "remaining": remaining,
+                    "average": average,
+                    "fee": fee,
+                    "status": status,
+                }
+            )
+            self._orders[idx] = updated
+            return updated
+        return None

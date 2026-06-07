@@ -1,0 +1,8 @@
+{
+  "_comment": "Sanitized CCXT fetch_trades('BTC/USD') for Coinbase. Trade ids are opaque sequence numbers (no account linkage); no keys/PII.",
+  "trades": [
+    {"id": "601234500", "timestamp": 1704164645000, "datetime": "2024-01-02T03:04:05.000Z", "symbol": "BTC/USD", "side": "buy", "price": 62500.75, "amount": 0.0125, "cost": 781.259375, "takerOrMaker": "taker"},
+    {"id": "601234501", "timestamp": 1704164646000, "datetime": "2024-01-02T03:04:06.000Z", "symbol": "BTC/USD", "side": "sell", "price": 62500.5, "amount": 0.004, "cost": 250.002, "takerOrMaker": "taker"},
+    {"id": "601234502", "timestamp": 1704164647000, "datetime": "2024-01-02T03:04:07.000Z", "symbol": "BTC/USD", "side": "buy", "price": 62501.0, "amount": 0.2, "cost": 12500.2, "takerOrMaker": "taker"}
+  ]
+}

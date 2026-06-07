@@ -31,8 +31,9 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import ccxt
@@ -44,6 +45,7 @@ from trader_mcp.exchanges.errors import TRANSIENT_CCXT_ERRORS, map_ccxt_error
 from trader_mcp.exchanges.models import (
     Balance,
     BalanceEntry,
+    ClockSkew,
     CredentialStatus,
     ExchangeCapabilities,
     FundingRate,
@@ -83,6 +85,13 @@ WS_BACKOFF_BASE_SECONDS = 0.5
 
 #: Ceiling (seconds) for the bounded WebSocket reconnection backoff.
 WS_BACKOFF_MAX_SECONDS = 30.0
+
+#: Default tolerance (milliseconds) for local-vs-exchange clock skew. Beyond this,
+#: :meth:`ExchangeAdapter.check_clock_skew` flags the drift (and logs a redacted
+#: warning), since signed-request exchanges reject requests when the local clock
+#: drifts past their recvWindow. 1000 ms is a conservative fraction of the typical
+#: 5000 ms exchange recvWindow.
+CLOCK_SKEW_WARN_MS = 1000.0
 
 
 def _create_ccxt_client(exchange_id: str, config: dict[str, Any]) -> Any:
@@ -153,6 +162,17 @@ def _apply_network_settings(config: dict[str, Any], settings: Settings) -> None:
 async def _sleep(seconds: float) -> None:
     """Async sleep indirection so tests can patch out real backoff delays."""
     await asyncio.sleep(seconds)
+
+
+def _now_ms() -> float:
+    """Local wall-clock time in milliseconds since the epoch (test seam).
+
+    Used by :meth:`ExchangeAdapter.check_clock_skew` to read the local clock both
+    just before and just after the server-time round trip. Isolated as a tiny
+    module-level function so tests can patch it deterministically without touching
+    the real wall clock.
+    """
+    return time.time() * 1000.0
 
 
 def _to_float(value: Any) -> float | None:
@@ -743,6 +763,100 @@ class ExchangeAdapter:
             mark_price=_to_float(raw.get("markPrice")),
             index_price=_to_float(raw.get("indexPrice")),
             interval=raw.get("interval"),
+        )
+
+    # -- resilience / health (no auth) -------------------------------------------
+
+    async def check_clock_skew(self, *, threshold_ms: float = CLOCK_SKEW_WARN_MS) -> ClockSkew:
+        """Measure local-vs-exchange clock skew and flag drift past ``threshold_ms``.
+
+        Reads the exchange's server time (CCXT ``fetch_time``, or its synchronous
+        ``milliseconds()`` fallback) and compares it to the local clock. A signed-
+        request exchange rejects requests whose timestamp drifts past its recvWindow,
+        so surfacing skew here lets a status/health check warn an operator *before*
+        an order or authed read fails with a confusing auth error. This is a public,
+        unauthenticated read -- no credentials, no key scope required.
+
+        The local clock is sampled both immediately before and immediately after the
+        server-time round trip; the midpoint of those two samples is used as the
+        local reference so network latency is split symmetrically rather than charged
+        entirely to one side. ``skew_ms`` is ``local_mid_ms - server_time_ms`` (a
+        positive value means the local clock is ahead of the exchange). A drift whose
+        magnitude exceeds ``threshold_ms`` sets ``within_tolerance=False`` and emits a
+        single redacted warning.
+
+        Args:
+            threshold_ms: Tolerance in milliseconds. ``abs(skew_ms)`` above this
+                marks the result out of tolerance. Defaults to
+                :data:`CLOCK_SKEW_WARN_MS`.
+
+        Returns:
+            A typed :class:`ClockSkew` snapshot. Carries no secret material.
+
+        Raises:
+            trader_mcp.errors.ExchangeError: if the server-time read fails (mapped
+                and redacted by :meth:`_call`; never a raw CCXT exception).
+        """
+        before_ms = _now_ms()
+        server_ms_raw = await self._call("fetch_time", self._server_time_factory())
+        after_ms = _now_ms()
+
+        server_ms = float(server_ms_raw)
+        local_mid_ms = (before_ms + after_ms) / 2.0
+        round_trip_ms = after_ms - before_ms
+        skew_ms = local_mid_ms - server_ms
+        within_tolerance = abs(skew_ms) <= threshold_ms
+
+        if not within_tolerance:
+            _logger.warning(
+                "%s clock skew %.0fms exceeds tolerance %.0fms (round trip %.0fms); "
+                "signed requests may be rejected -- check the host clock / NTP sync.",
+                self.exchange_id,
+                skew_ms,
+                threshold_ms,
+                round_trip_ms,
+            )
+
+        return ClockSkew(
+            exchange=self.exchange_id,
+            server_time=ms_to_datetime(server_ms) or datetime.now(UTC),
+            local_time=ms_to_datetime(local_mid_ms) or datetime.now(UTC),
+            skew_ms=skew_ms,
+            round_trip_ms=round_trip_ms,
+            threshold_ms=threshold_ms,
+            within_tolerance=within_tolerance,
+        )
+
+    def _server_time_factory(self) -> Callable[[], Awaitable[Any]]:
+        """Return a zero-arg coroutine factory that yields the exchange server time.
+
+        Prefers the async unified ``fetch_time``; falls back to CCXT's synchronous
+        ``milliseconds()`` (wrapped in a trivial coroutine) for a build/exchange that
+        does not implement ``fetch_time``. Raises a typed not-supported error if
+        neither is available, so :meth:`check_clock_skew` never hangs on a missing
+        method.
+        """
+        fetch_time: Any = getattr(self._client, "fetch_time", None)
+        if callable(fetch_time):
+
+            async def _from_fetch_time() -> Any:
+                awaitable: Any = fetch_time()
+                return await awaitable
+
+            return _from_fetch_time
+
+        milliseconds = getattr(self._client, "milliseconds", None)
+        if callable(milliseconds):
+
+            async def _from_milliseconds() -> Any:
+                return milliseconds()
+
+            return _from_milliseconds
+
+        raise map_ccxt_error(
+            ccxt.NotSupported(f"{self.exchange_id} exposes no server-time method"),
+            exchange=self.exchange_id,
+            op="fetch_time",
         )
 
     # -- credentials -------------------------------------------------------------

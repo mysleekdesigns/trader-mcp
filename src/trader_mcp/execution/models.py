@@ -44,7 +44,17 @@ OrderSide = Literal["buy", "sell"]
 OrderType = Literal["market", "limit"]
 
 #: Lifecycle status of a placed/simulated order.
-OrderStatus = Literal["filled", "open", "canceled", "rejected"]
+#:
+#: ``open`` = acknowledged, nothing filled yet (a pending next-bar intent);
+#: ``partially_filled`` = some base filled, a remainder still rests; ``filled`` =
+#: fully filled (``remaining == 0``); ``canceled`` / ``rejected`` are terminal.
+#: ``partially_filled`` exists for the LIVE path: a real exchange can fill an order
+#: in pieces, so an :class:`OrderRecord` aggregates those pieces into a cumulative
+#: ``filled``/``average`` with the resting ``remaining``. The paper/backtest
+#: simulation fills atomically (a single, complete fill), so it only ever produces
+#: ``open`` -> ``filled`` -- partial fills therefore CANNOT alter the simulated net
+#: position the interpreter expects, and backtest<->live parity is preserved.
+OrderStatus = Literal["filled", "partially_filled", "open", "canceled", "rejected"]
 
 #: Why the runtime emitted an intent (for an auditable, human-readable trail).
 #: ``signal`` = a rule entry/exit; ``grid`` = a grid-level buy; ``dca`` = a
@@ -116,14 +126,42 @@ class OrderIntent(_ExecModel):
     reason: IntentReason = "signal"
 
 
+class FillEvent(_ExecModel):
+    """One (possibly partial) fill of an order -- the LIVE path's atom of execution.
+
+    A real exchange can fill a single order in several pieces; each arriving fill is
+    one of these. The paper/backtest simulation fills atomically, so it produces
+    exactly one :class:`FillEvent` per order whose ``qty`` equals the order amount --
+    a degenerate (complete) partial fill. Aggregating a list of these with
+    :func:`aggregate_fills` yields the cumulative ``filled``/``average``/``remaining``
+    an :class:`OrderRecord` reports, with over-fill made impossible.
+
+    ``qty`` is the base amount executed by THIS fill (always positive); ``price`` is
+    that fill's execution price; ``fee`` is the quote-currency fee for this fill.
+    """
+
+    qty: float = Field(gt=0)
+    price: float = Field(gt=0)
+    fee: float = Field(default=0.0, ge=0)
+    timestamp: datetime
+
+
 class OrderRecord(_ExecModel):
     """The result of submitting an :class:`OrderIntent` to the broker.
 
     For a paper session every record is a fill (or a rejection) computed in-memory;
     ``simulated`` is always ``True`` for the :class:`~trader_mcp.execution.
-    paper_broker.PaperBroker`. ``average`` is the (slippage-adjusted) fill price;
-    ``fee`` is the taker fee paid in quote currency; ``filled`` is the filled base
-    amount.
+    paper_broker.PaperBroker`. ``average`` is the (slippage-adjusted) volume-weighted
+    average fill price over ALL fills so far; ``fee`` is the cumulative taker fee paid
+    in quote currency; ``filled`` is the cumulative filled base amount and
+    ``remaining`` is what still rests (``amount - filled``, never negative).
+
+    PARTIAL FILLS: ``filled``/``average``/``remaining``/``status`` are the aggregate
+    of one or more :class:`FillEvent` s (see :func:`aggregate_fills`). The simulation
+    only ever produces a single complete fill (``status`` goes ``open`` -> ``filled``,
+    ``remaining == 0``), so partial fills are purely a LIVE-path concept and never
+    perturb the simulated net position parity depends on. ``remaining > 0`` with
+    ``filled > 0`` is reported as ``partially_filled``.
     """
 
     order_id: str
@@ -134,11 +172,58 @@ class OrderRecord(_ExecModel):
     status: OrderStatus
     amount: float
     filled: float
+    remaining: float = 0.0
     average: float | None
     fee: float
     timestamp: datetime
     reason: IntentReason
     simulated: bool = True
+
+
+def aggregate_fills(
+    *,
+    amount: float,
+    fills: list[FillEvent],
+) -> tuple[float, float, float | None, float, OrderStatus]:
+    """Reduce ``fills`` into cumulative ``(filled, remaining, average, fee, status)``.
+
+    The single accounting path shared by the paper broker (one complete fill) and a
+    future live broker (many partial fills from the exchange). It guarantees:
+
+    * ``filled`` is the sum of the fills' ``qty`` and ``average`` is their
+      volume-weighted price -- so cumulative partials roll up to the right average
+      price and position size;
+    * **over-fill is impossible**: cumulative ``filled`` is clamped to ``amount`` (a
+      misbehaving feed reporting more than the order size cannot inflate the
+      position), and ``remaining = max(amount - filled, 0)``. Note ``average`` is
+      still the VWAP of the *raw* (unclamped) executed quantities -- it reflects the
+      prices actually paid, while only the position size is clamped;
+    * ``status`` is ``open`` (nothing filled), ``partially_filled`` (some filled, a
+      remainder rests), or ``filled`` (``remaining`` rounds to zero).
+
+    Parity note: with a single fill whose ``qty == amount`` (the simulation's case)
+    this returns ``(amount, 0, fill_price, fill_fee, "filled")`` -- exactly the
+    atomic fill the backtest broker books, so routing simulated fills through here
+    changes no number.
+    """
+    if not fills:
+        return 0.0, amount, None, 0.0, "open"
+    raw_filled = sum(f.qty for f in fills)
+    filled = min(raw_filled, amount)
+    remaining = amount - filled
+    if remaining < 0.0:
+        remaining = 0.0
+    notional = sum(f.qty * f.price for f in fills)
+    average = notional / raw_filled if raw_filled > 0 else None
+    fee = sum(f.fee for f in fills)
+    status: OrderStatus
+    if remaining <= 1e-12:
+        status = "filled"
+    elif filled > 0.0:
+        status = "partially_filled"
+    else:
+        status = "open"
+    return filled, remaining, average, fee, status
 
 
 class PaperPosition(_ExecModel):

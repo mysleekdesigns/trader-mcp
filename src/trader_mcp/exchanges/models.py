@@ -222,6 +222,30 @@ class FundingRate(_DomainModel):
     interval: str | None = None
 
 
+class ClockSkew(_DomainModel):
+    """Result of measuring local-vs-exchange clock skew (a resilience health check).
+
+    Signed-request exchanges reject (or silently mis-time) requests when the local
+    clock drifts too far from the exchange's server time. This typed snapshot lets a
+    status/health check surface that drift before it causes auth/recvWindow failures.
+
+    ``skew_ms`` is ``local_time_ms - server_time_ms``: a **positive** value means the
+    local clock is *ahead* of the exchange; **negative** means it is *behind*.
+    ``within_tolerance`` is ``False`` when ``abs(skew_ms)`` exceeds the configured
+    warning threshold (``threshold_ms``). The measurement performs one network round
+    trip; ``round_trip_ms`` is recorded so a large skew attributable to latency can be
+    judged in context. This model carries no secret material.
+    """
+
+    exchange: ExchangeId
+    server_time: datetime
+    local_time: datetime
+    skew_ms: float
+    round_trip_ms: float
+    threshold_ms: float
+    within_tolerance: bool
+
+
 class CredentialStatus(_DomainModel):
     """Result of checking an exchange credential.
 

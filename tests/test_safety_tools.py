@@ -172,8 +172,8 @@ async def test_safety_tools_registered_and_structured() -> None:
         assert tool.outputSchema.get("type") == "object"
 
 
-async def test_tool_count_is_45() -> None:
-    assert len(await build_app().list_tools()) == 45
+async def test_tool_count_is_46() -> None:
+    assert len(await build_app().list_tools()) == 46
 
 
 # --------------------------------------------------------------------------- #

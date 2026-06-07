@@ -279,6 +279,9 @@ class FakeCcxt:
         self.trades_data = trades_payload()
         self.funding_data = funding_rate_payload()
         self.balance_data: dict[str, Any] = {"USD": {"free": 100.0, "used": 0.0, "total": 100.0}}
+        #: Exchange server time (ms) returned by ``fetch_time`` -- tweak to simulate
+        #: clock skew. Defaults to the fixed fixture timestamp for determinism.
+        self.server_time_ms: int = FIXED_MS
 
         #: Per-method exception to raise on EVERY call (persistent failure).
         self.raise_on: dict[str, BaseException] = {}
@@ -335,6 +338,11 @@ class FakeCcxt:
     async def fetch_funding_rate(self, symbol: str) -> dict[str, Any]:
         self._dispatch("fetch_funding_rate")
         return self.funding_data
+
+    # -- server time (no auth) -------------------------------------------- #
+    async def fetch_time(self) -> int:
+        self._dispatch("fetch_time")
+        return self.server_time_ms
 
     # -- private (read) ---------------------------------------------------- #
     async def fetch_balance(self) -> dict[str, Any]:

@@ -141,14 +141,21 @@ def _order_to_record(order: Order, *, reason: Literal["manual"] = "manual") -> O
     simulated (paper broker record) or routed (exchange order). ``simulated=False``
     marks a real (testnet) fill so a consumer can never confuse it with a paper one.
     """
-    status: Literal["filled", "open", "canceled", "rejected"]
+    status: Literal["filled", "partially_filled", "open", "canceled", "rejected"]
     raw_status = order.status
-    if raw_status in ("filled", "open", "canceled", "rejected"):
+    amount = order.amount or 0.0
+    filled = order.filled or 0.0
+    if raw_status in ("filled", "partially_filled", "open", "canceled", "rejected"):
         status = raw_status  # type: ignore[assignment]
     elif raw_status == "closed":
         status = "filled"
     else:
         status = "open"
+    # A resting order the exchange reports as ``open`` but already partly executed
+    # is partially filled -- surface it as such so the testnet/live record matches
+    # the partial-fill accounting in execution.models.aggregate_fills.
+    if status == "open" and filled > 0.0:
+        status = "partially_filled"
     fee_cost = order.fee.cost if order.fee is not None else None
 
     return OrderRecord(
@@ -158,8 +165,9 @@ def _order_to_record(order: Order, *, reason: Literal["manual"] = "manual") -> O
         side=order.side or "buy",
         type=order.type or "market",
         status=status,
-        amount=order.amount or 0.0,
-        filled=order.filled or 0.0,
+        amount=amount,
+        filled=filled,
+        remaining=max(amount - filled, 0.0),
         average=order.average,
         fee=fee_cost or 0.0,
         timestamp=order.timestamp or datetime.now(tz=UTC),
