@@ -32,6 +32,20 @@ MarketType = Literal["spot", "swap"]
 #: ``certified``. Gemini and Crypto.com are ``supported``.
 ReliabilityTier = Literal["certified", "supported"]
 
+#: Order side as normalized by CCXT's unified order schema.
+OrderSide = Literal["buy", "sell"]
+
+#: Order type as normalized by CCXT's unified order schema. v1 plumbing carries
+#: ``market``/``limit``; richer types (stop, etc.) are out of scope here.
+OrderType = Literal["market", "limit"]
+
+#: Normalized order lifecycle status. CCXT reports the raw status as one of
+#: ``open``/``closed``/``canceled``; anything else degrades to ``"unknown"``.
+OrderStatus = Literal["open", "closed", "canceled", "rejected", "expired", "unknown"]
+
+#: Position side for a derivatives position. Spot exchanges do not report these.
+PositionSide = Literal["long", "short"]
+
 
 def ms_to_datetime(ms: float | int | None) -> datetime | None:
     """Convert a CCXT millisecond timestamp to a timezone-aware UTC datetime.
@@ -223,3 +237,85 @@ class CredentialStatus(_DomainModel):
     can_read: bool = False
     can_trade: bool = False
     message: str
+
+
+class OrderFee(_DomainModel):
+    """A normalized trading fee charged on an order/fill.
+
+    All fields are optional: CCXT omits the fee until an order (partially) fills,
+    and some exchanges never report a fee currency.
+    """
+
+    cost: float | None = None
+    currency: str | None = None
+    rate: float | None = None
+
+
+class Order(_DomainModel):
+    """A normalized order, as returned by create/cancel/fetch order calls.
+
+    Wraps CCXT's unified order schema. Numeric/derived fields are optional because
+    CCXT does not populate every field at every lifecycle stage (e.g. ``average``
+    is ``None`` until there is a fill; ``price`` is ``None`` for a market order).
+    The ``status`` is normalized to a small stable set; an unrecognized raw status
+    degrades to ``"unknown"`` rather than failing.
+    """
+
+    exchange: ExchangeId
+    id: str | None = None
+    client_order_id: str | None = None
+    symbol: str
+    type: OrderType | None = None
+    side: OrderSide | None = None
+    status: OrderStatus = "unknown"
+    price: float | None = None
+    amount: float | None = None
+    filled: float | None = None
+    remaining: float | None = None
+    average: float | None = None
+    cost: float | None = None
+    fee: OrderFee | None = None
+    timestamp: datetime | None = None
+
+
+class Position(_DomainModel):
+    """A normalized open derivatives position.
+
+    Returned by ``fetch_positions``. Spot-only exchanges (e.g. Coinbase) report no
+    positions, so this is used by the swap-capable exchanges. Most fields are
+    optional because CCXT's position schema is sparse and exchange-dependent.
+    """
+
+    exchange: ExchangeId
+    symbol: str
+    side: PositionSide | None = None
+    contracts: float | None = None
+    contract_size: float | None = None
+    entry_price: float | None = None
+    mark_price: float | None = None
+    notional: float | None = None
+    unrealized_pnl: float | None = None
+    leverage: float | None = None
+    liquidation_price: float | None = None
+    timestamp: datetime | None = None
+
+
+class BalanceEntry(_DomainModel):
+    """A single currency's free/used/total balance."""
+
+    currency: str
+    free: float | None = None
+    used: float | None = None
+    total: float | None = None
+
+
+class Balance(_DomainModel):
+    """A normalized account balance: a per-currency map of free/used/total.
+
+    Only currencies with a non-zero total (or a non-zero free/used) are retained,
+    keyed by currency code, to keep the payload small and AI-friendly.
+    """
+
+    exchange: ExchangeId
+    entries: dict[str, BalanceEntry]
+    timestamp: datetime | None = None

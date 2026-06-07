@@ -137,23 +137,72 @@ def _require_engine() -> None:
 # registry's ``output_suffixes``. We select pandas-ta's multi-output columns by
 # ORDINAL position (not by their param-baked names like ``MACDs_12_26_9``) so the
 # mapping is independent of the chosen lengths/stds.
+#
+# ROBUSTNESS (Phase 5): pandas-ta returns ``None`` (not a NaN-filled object) when
+# the input has fewer rows than an indicator's minimum lookback -- this happens on
+# every per-bar live/paper call during warm-up, where the StrategyRuntime drives
+# the interpreter over a growing trailing prefix. Calling ``.iloc`` on that
+# ``None`` crashes. The two seams below absorb that:
+#
+#   * ``_nan_series`` builds a NaN-filled Series aligned to ``df``'s index, used
+#     as the fallback output line.
+#   * ``_pick`` selects ordinal columns from a (possibly ``None``) DataFrame and
+#     ``_one`` passes through a (possibly ``None``) Series, each substituting NaN
+#     series when pandas-ta returned nothing.
+#
+# This is parity-preserving: the backtest path computes over the FULL window so
+# pandas-ta yields NaN in the warm-up positions, and the interpreter maps
+# ``NaN -> False`` (no signal). The live path over a short prefix now yields the
+# same NaN -> False at exactly those bars instead of crashing, and never changes
+# the happy-path values (when pandas-ta returns data we pass it through unchanged).
 # --------------------------------------------------------------------------- #
+def _nan_series(df: pd.DataFrame) -> pd.Series:
+    """A float NaN Series aligned to ``df``'s index (warm-up / insufficient-data fallback)."""
+    import numpy as np
+    import pandas as pd
+
+    return pd.Series(np.nan, index=df.index, dtype="float64")
+
+
+def _one(out: pd.Series | None, df: pd.DataFrame) -> pd.Series:
+    """Pass through a pandas-ta Series, or a NaN series if it returned ``None``.
+
+    Single-output adapters use this so a too-short input yields a NaN line instead
+    of propagating ``None`` (which would later crash on ``.to_numpy()``).
+    """
+    return _nan_series(df) if out is None else out
+
+
+def _pick(out: pd.DataFrame | None, df: pd.DataFrame, *positions: int) -> list[pd.Series]:
+    """Select ordinal columns from a pandas-ta DataFrame, NaN-filling on ``None``.
+
+    When pandas-ta has too few rows for a composite indicator it returns ``None``
+    rather than a NaN-filled frame; this returns one NaN-filled Series per
+    requested position so the adapter still yields the correct NUMBER of lines in
+    the right order without touching ``.iloc`` on ``None``.
+    """
+    if out is None:
+        nan = _nan_series(df)
+        return [nan] * len(positions)
+    return [out.iloc[:, pos] for pos in positions]
+
+
 def _sma(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
     from trader_mcp.indicators import _ta
 
-    return [_ta.sma(df["close"], length=int(p["length"]))]
+    return [_one(_ta.sma(df["close"], length=int(p["length"])), df)]
 
 
 def _ema(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
     from trader_mcp.indicators import _ta
 
-    return [_ta.ema(df["close"], length=int(p["length"]))]
+    return [_one(_ta.ema(df["close"], length=int(p["length"])), df)]
 
 
 def _rsi(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
     from trader_mcp.indicators import _ta
 
-    return [_ta.rsi(df["close"], length=int(p["length"]))]
+    return [_one(_ta.rsi(df["close"], length=int(p["length"])), df)]
 
 
 def _macd(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
@@ -167,7 +216,7 @@ def _macd(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
     )
     # pandas-ta column order: MACD, MACDh (hist), MACDs (signal).
     # Registry order is: macd line, signal, hist.
-    return [out.iloc[:, 0], out.iloc[:, 2], out.iloc[:, 1]]
+    return _pick(out, df, 0, 2, 1)
 
 
 def _bbands(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
@@ -176,7 +225,7 @@ def _bbands(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
     out = _ta.bbands(df["close"], length=int(p["length"]), std=float(p["std"]))
     # pandas-ta column order: BBL (lower), BBM (mid), BBU (upper), BBB, BBP.
     # Registry primary line is the middle band; then upper, lower.
-    return [out.iloc[:, 1], out.iloc[:, 2], out.iloc[:, 0]]
+    return _pick(out, df, 1, 2, 0)
 
 
 def _donchian(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
@@ -186,13 +235,13 @@ def _donchian(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
     out = _ta.donchian(df["high"], df["low"], lower_length=length, upper_length=length)
     # pandas-ta column order: DCL (lower), DCM (mid), DCU (upper).
     # Registry primary line is the middle channel; then upper, lower.
-    return [out.iloc[:, 1], out.iloc[:, 2], out.iloc[:, 0]]
+    return _pick(out, df, 1, 2, 0)
 
 
 def _atr(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
     from trader_mcp.indicators import _ta
 
-    return [_ta.atr(df["high"], df["low"], df["close"], length=int(p["length"]))]
+    return [_one(_ta.atr(df["high"], df["low"], df["close"], length=int(p["length"])), df)]
 
 
 def _stoch(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
@@ -207,7 +256,7 @@ def _stoch(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
         smooth_k=int(p["smooth_k"]),
     )
     # pandas-ta column order: STOCHk, STOCHd, STOCHh. Primary line is %K; then %D.
-    return [out.iloc[:, 0], out.iloc[:, 1]]
+    return _pick(out, df, 0, 1)
 
 
 def _adx(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
@@ -216,7 +265,7 @@ def _adx(df: pd.DataFrame, p: dict[str, float]) -> list[pd.Series]:
     out = _ta.adx(df["high"], df["low"], df["close"], length=int(p["length"]))
     # pandas-ta column order: ADX, ADXR, DMP (+DI), DMN (-DI).
     # Registry order: adx (primary), +di (plus), -di (minus).
-    return [out.iloc[:, 0], out.iloc[:, 2], out.iloc[:, 3]]
+    return _pick(out, df, 0, 2, 3)
 
 
 #: The registry: every whitelisted indicator kind -> its definition. This dict IS

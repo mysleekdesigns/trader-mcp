@@ -13,6 +13,7 @@ import pytest
 
 import trader_mcp.exchanges.adapter as adapter_module
 from tests._fakes import FIXED_MS, FakeCcxt
+from trader_mcp.errors import ExchangeError
 from trader_mcp.exchanges import ExchangeAdapter
 from trader_mcp.exchanges.adapter import _to_float
 
@@ -49,10 +50,14 @@ async def test_testnet_calls_set_sandbox_mode(
         assert client.sandbox_calls == [True]
 
 
-async def test_testnet_not_supported_is_swallowed(
+async def test_testnet_notsupported_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If set_sandbox_mode raises NotSupported, create() warns and proceeds."""
+    """If set_sandbox_mode raises NotSupported, create() refuses (typed error).
+
+    Phase 5 contract: we never silently fall through to live endpoints when a
+    requested sandbox cannot be enabled -- that would risk a real-money order.
+    """
     client = FakeCcxt()
 
     def boom(enabled: bool) -> None:
@@ -64,10 +69,9 @@ async def test_testnet_not_supported_is_swallowed(
         "_create_ccxt_client",
         lambda eid, config: client,
     )
-    adapter = await ExchangeAdapter.create("coinbase", testnet=True)
-    async with adapter:
-        # Construction succeeded despite the NotSupported sandbox error.
-        assert adapter.testnet is True
+    with pytest.raises(ExchangeError) as excinfo:
+        await ExchangeAdapter.create("coinbase", testnet=True)
+    assert excinfo.value.details["kind"] == "not_supported"
 
 
 async def test_no_testnet_does_not_touch_sandbox(
@@ -79,18 +83,18 @@ async def test_no_testnet_does_not_touch_sandbox(
         assert client.sandbox_calls == []
 
 
-async def test_testnet_client_without_sandbox_method(
+async def test_testnet_client_without_sandbox_method_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A client whose set_sandbox_mode is not callable must not break testnet."""
+    """A client whose set_sandbox_mode is not callable refuses sandbox (typed error)."""
     client = FakeCcxt()
     # Shadow the class method with a non-callable so the adapter's
-    # ``callable(...)`` guard takes the skip branch.
+    # ``callable(...)`` guard rejects sandbox rather than silently using live.
     monkeypatch.setattr(client, "set_sandbox_mode", None)
     monkeypatch.setattr(adapter_module, "_create_ccxt_client", lambda eid, config: client)
-    adapter = await ExchangeAdapter.create("coinbase", testnet=True)
-    async with adapter:
-        assert adapter.testnet is True
+    with pytest.raises(ExchangeError) as excinfo:
+        await ExchangeAdapter.create("coinbase", testnet=True)
+    assert excinfo.value.details["kind"] == "not_supported"
 
 
 # --------------------------------------------------------------------------- #

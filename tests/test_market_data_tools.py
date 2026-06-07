@@ -94,8 +94,8 @@ def app_with_fake(monkeypatch: pytest.MonkeyPatch, no_credentials: None) -> Any:
 # --------------------------------------------------------------------------- #
 # Registration + schema advertisement
 # --------------------------------------------------------------------------- #
-async def test_all_twenty_seven_tools_registered() -> None:
-    """2 admin + 9 Phase 1 + 3 Phase 2 + 8 Phase 3 + 5 Phase 4 backtest tools = 27."""
+async def test_all_thirty_nine_tools_registered() -> None:
+    """2 admin + 9 P1 + 3 P2 + 8 P3 + 5 P4 + 12 P5 execution/portfolio tools = 39."""
     app = build_app()
     names = set(await _tools_by_name(app))
     assert {"health_check", "get_server_status"} <= names
@@ -118,7 +118,21 @@ async def test_all_twenty_seven_tools_registered() -> None:
         "optimize_strategy",
         "generate_tearsheet",
     } <= names
-    assert len(names) == 27
+    assert {
+        "start_session",
+        "place_order",
+        "cancel_order",
+        "get_open_orders",
+        "get_positions",
+        "get_balance",
+        "deploy_strategy",
+        "stop_strategy",
+        "get_session_status",
+        "get_portfolio",
+        "get_pnl",
+        "get_trade_history",
+    } <= names
+    assert len(names) == 39
 
 
 async def test_phase1_tools_advertise_structured_output_schema() -> None:

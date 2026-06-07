@@ -20,6 +20,8 @@ from trader_mcp.exchanges.adapter import ExchangeAdapter
 from trader_mcp.exchanges.errors import map_ccxt_error
 from trader_mcp.exchanges.manager import ExchangeManager
 from trader_mcp.exchanges.models import (
+    Balance,
+    BalanceEntry,
     CredentialStatus,
     ExchangeCapabilities,
     ExchangeInfo,
@@ -28,8 +30,15 @@ from trader_mcp.exchanges.models import (
     MarketType,
     OHLCVBar,
     OHLCVResult,
+    Order,
     OrderBook,
     OrderBookLevel,
+    OrderFee,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    Position,
+    PositionSide,
     RecentTradesResult,
     Ticker,
     Trade,
@@ -41,6 +50,8 @@ from trader_mcp.exchanges.registry import (
 )
 
 __all__ = [
+    "Balance",
+    "BalanceEntry",
     "CredentialStatus",
     "ExchangeAdapter",
     "ExchangeCapabilities",
@@ -51,8 +62,15 @@ __all__ = [
     "MarketType",
     "OHLCVBar",
     "OHLCVResult",
+    "Order",
     "OrderBook",
     "OrderBookLevel",
+    "OrderFee",
+    "OrderSide",
+    "OrderStatus",
+    "OrderType",
+    "Position",
+    "PositionSide",
     "RecentTradesResult",
     "Ticker",
     "Trade",

@@ -109,11 +109,16 @@ async def test_phase3_tools_advertise_structured_output_schema() -> None:
         assert tool.outputSchema.get("type") == "object"
 
 
-async def test_no_execution_tools_introduced() -> None:
-    """Phase 3 adds no order/arming/credential surface (safe-by-default invariant)."""
+async def test_no_live_arming_tools_introduced() -> None:
+    """No Phase-6 live-arming/kill-switch surface exists yet (safe-by-default).
+
+    Phase 5 legitimately adds gated, dry-run-by-default ``place_order``/
+    ``deploy_strategy``; the still-true invariant is that the real-money arming and
+    kill-switch tools do not land until Phase 6.
+    """
     built = build_app()
     names = {t.name for t in await built.list_tools()}
-    forbidden = {"place_order", "deploy_strategy", "arm_live_trading", "kill_switch"}
+    forbidden = {"arm_live_trading", "kill_switch"}
     assert names.isdisjoint(forbidden)
 
 

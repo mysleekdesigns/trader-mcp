@@ -191,3 +191,116 @@ def test_unknown_kind_rejected_in_output_names() -> None:
 
     with pytest.raises(ValidationError, match="Unknown indicator kind"):
         output_names_for("x", "bogus")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 5 robustness: insufficient-data warm-up must not crash.
+#
+# pandas-ta returns ``None`` (not a NaN-filled frame) when a composite indicator
+# gets fewer rows than its minimum lookback. The live/paper StrategyRuntime drives
+# the interpreter over a growing trailing prefix, so it computes indicators over
+# SHORT windows during warm-up. The adapters must return NaN-filled Series of the
+# correct length/order rather than raising on ``None.iloc``.
+# --------------------------------------------------------------------------- #
+def _short_bars(n: int) -> list[OHLCVBar]:
+    rng = np.random.default_rng(11)
+    closes = np.cumsum(rng.standard_normal(n)) + 100
+    return [
+        OHLCVBar(
+            timestamp=_BASE + timedelta(hours=i),
+            open=float(c),
+            high=float(c) + 1.5,
+            low=float(c) - 1.5,
+            close=float(c),
+            volume=10.0 + i,
+        )
+        for i, c in enumerate(closes)
+    ]
+
+
+@pytest.mark.parametrize("kind", sorted(INDICATOR_REGISTRY))
+@pytest.mark.parametrize("n", [1, 5, 10])
+def test_short_window_returns_nan_columns_not_crash(kind: str, n: int) -> None:
+    # Every indicator over a too-short window yields NaN-filled output columns of
+    # the right length, in the right order -- no AttributeError on a None result.
+    df = df_from_bars(_short_bars(n))
+    out = compute_indicators([IndicatorSpec(id="x", kind=kind)], df)  # type: ignore[arg-type]
+    names = output_names_for("x", kind)
+    for name in names:
+        assert name in out.columns
+        col = out[name].to_numpy()
+        assert len(col) == n
+        # During deep warm-up these are NaN (the interpreter maps NaN -> False).
+        assert np.isnan(col).all()
+
+
+def test_macd_short_window_does_not_crash() -> None:
+    # Direct regression for the reported crash: MACD over 10 rows (needs ~35).
+    df = df_from_bars(_short_bars(10))
+    out = compute_indicators([IndicatorSpec(id="m", kind="macd")], df)
+    for name in ("m", "m_signal", "m_hist"):
+        vals = out[name].to_numpy()
+        assert len(vals) == 10
+        assert np.isnan(vals).all()
+
+
+def test_bbands_short_window_does_not_crash() -> None:
+    df = df_from_bars(_short_bars(10))
+    out = compute_indicators([IndicatorSpec(id="bb", kind="bbands")], df)
+    for name in ("bb", "bb_upper", "bb_lower"):
+        vals = out[name].to_numpy()
+        assert len(vals) == 10
+        assert np.isnan(vals).all()
+
+
+def test_macd_happy_path_unchanged_after_robustness(bars: list[OHLCVBar]) -> None:
+    # Regression guard: a sufficiently long window must yield the exact same values
+    # as a direct pandas-ta call (the None-fallback must never touch this path).
+    df = df_from_bars(bars)
+    out = compute_indicators([IndicatorSpec(id="m", kind="macd")], df)
+    raw = ta.macd(df["close"], fast=12, slow=26, signal=9)
+    np.testing.assert_allclose(out["m"].to_numpy(), raw.iloc[:, 0].to_numpy(), equal_nan=True)
+    np.testing.assert_allclose(
+        out["m_signal"].to_numpy(), raw.iloc[:, 2].to_numpy(), equal_nan=True
+    )
+    np.testing.assert_allclose(out["m_hist"].to_numpy(), raw.iloc[:, 1].to_numpy(), equal_nan=True)
+
+
+def test_bbands_happy_path_unchanged_after_robustness(bars: list[OHLCVBar]) -> None:
+    df = df_from_bars(bars)
+    out = compute_indicators([IndicatorSpec(id="bb", kind="bbands")], df)
+    raw = ta.bbands(df["close"], length=20, std=2.0)
+    np.testing.assert_allclose(out["bb"].to_numpy(), raw.iloc[:, 1].to_numpy(), equal_nan=True)
+    np.testing.assert_allclose(
+        out["bb_upper"].to_numpy(), raw.iloc[:, 2].to_numpy(), equal_nan=True
+    )
+    np.testing.assert_allclose(
+        out["bb_lower"].to_numpy(), raw.iloc[:, 0].to_numpy(), equal_nan=True
+    )
+
+
+def test_per_bar_prefix_matches_full_window_macd(bars: list[OHLCVBar]) -> None:
+    # Parity proof for the live path: once pandas-ta returns a frame for a prefix,
+    # the last value of that prefix equals the full-window value at the same index
+    # (MACD/EWM is causal). When the prefix is too short pandas-ta returns ``None``
+    # and our fix yields NaN -> the interpreter maps that to False (no signal),
+    # which is the only safe, crash-free behavior in that warm-up band.
+    df = df_from_bars(bars)
+    full = compute_indicators([IndicatorSpec(id="m", kind="macd")], df)
+    # n=10/27 land in pandas-ta's None band (NaN expected); n>=34 returns a frame.
+    saw_nan_band = False
+    saw_value_band = False
+    for n in (10, 27, 34, 40, 80, len(df)):
+        prefix = compute_indicators([IndicatorSpec(id="m", kind="macd")], df.iloc[:n])
+        for name in ("m", "m_signal", "m_hist"):
+            last_prefix = prefix[name].to_numpy()[-1]
+            if np.isnan(last_prefix):
+                # Warm-up: safe NaN -> False; never a crash.
+                saw_nan_band = True
+            else:
+                # Steady state: byte-for-byte parity with the full-window value.
+                np.testing.assert_allclose(last_prefix, full[name].to_numpy()[n - 1])
+                saw_value_band = True
+    # The test exercises both the NaN warm-up band and the parity band.
+    assert saw_nan_band
+    assert saw_value_band

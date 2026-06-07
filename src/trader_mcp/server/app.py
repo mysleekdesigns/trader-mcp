@@ -19,24 +19,29 @@ Builds the :class:`FastMCP` server (via the SDK-isolation wrapper in
     * the Phase 4 backtest & optimize tools (via
       :func:`trader_mcp.server.backtest.register_backtest_tools`) and the saved-
       backtest-report MCP resources (via
-      :func:`trader_mcp.server.resources.register_backtest_resources`).
+      :func:`trader_mcp.server.resources.register_backtest_resources`);
+    * the Phase 5 paper/testnet execution tools (via
+      :func:`trader_mcp.server.execution.register_execution_tools`) and the
+      portfolio/analytics tools (via
+      :func:`trader_mcp.server.portfolio.register_portfolio_tools`).
 
 ``build_app`` is the single registration point. It constructs exactly one
 process-wide :class:`~trader_mcp.exchanges.ExchangeManager`, one process-wide
 :class:`~trader_mcp.data.OHLCVStore`, one process-wide
-:class:`~trader_mcp.strategy.StrategyStore`, and one process-wide
-:class:`~trader_mcp.engine.BacktestStore`, and wires a FastMCP lifespan that
-closes the manager's cached adapters on shutdown -- this keeps the SDK behind
-``_sdk`` (the lifespan is passed through ``create_fastmcp``). The stores use
-short-lived file/DuckDB handles (no persistent connection), so they need no
-lifespan teardown.
+:class:`~trader_mcp.strategy.StrategyStore`, one process-wide
+:class:`~trader_mcp.engine.BacktestStore`, and one process-wide
+:class:`~trader_mcp.execution.SessionRegistry`, and wires a FastMCP lifespan that
+stops any running execution sessions and closes the manager's cached adapters on
+shutdown -- this keeps the SDK behind ``_sdk`` (the lifespan is passed through
+``create_fastmcp``). The stores use short-lived file/DuckDB handles (no persistent
+connection), so they need no lifespan teardown; the session registry is in-memory.
 """
 
 from __future__ import annotations
 
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -44,11 +49,14 @@ from trader_mcp import __version__
 from trader_mcp.data import OHLCVStore
 from trader_mcp.engine import BacktestStore
 from trader_mcp.exchanges import ExchangeManager
+from trader_mcp.execution import SessionRegistry
 from trader_mcp.logging_config import get_logger
 from trader_mcp.server._sdk import FastMCP, create_fastmcp
 from trader_mcp.server.backtest import register_backtest_tools
+from trader_mcp.server.execution import register_execution_tools
 from trader_mcp.server.historical import register_data_tools
 from trader_mcp.server.market_data import register_market_data_tools
+from trader_mcp.server.portfolio import register_portfolio_tools
 from trader_mcp.server.prompts import register_strategy_prompts
 from trader_mcp.server.resources import (
     register_backtest_resources,
@@ -86,14 +94,16 @@ def build_app() -> FastMCP:
     Registers the Phase 0 admin tools, the Phase 1 market-data tools, the Phase 2
     historical data-sync tools + cached-dataset resources, the Phase 3
     strategy-authoring tools + saved-strategy resources + guided design prompts,
-    and the Phase 4 backtest & optimize tools + saved-backtest-report resources.
+    the Phase 4 backtest & optimize tools + saved-backtest-report resources, and
+    the Phase 5 paper/testnet execution tools + portfolio/analytics tools.
     Constructs exactly one process-wide
     :class:`~trader_mcp.exchanges.ExchangeManager`, one
     :class:`~trader_mcp.data.OHLCVStore`, one
-    :class:`~trader_mcp.strategy.StrategyStore`, and one
-    :class:`~trader_mcp.engine.BacktestStore`, closed over by the
-    tool/resource/prompt callables, and wires a FastMCP lifespan that calls
-    ``manager.aclose_all()`` on
+    :class:`~trader_mcp.strategy.StrategyStore`, one
+    :class:`~trader_mcp.engine.BacktestStore`, and one
+    :class:`~trader_mcp.execution.SessionRegistry`, closed over by the
+    tool/resource/prompt callables, and wires a FastMCP lifespan that stops any
+    running execution sessions and calls ``manager.aclose_all()`` on
     shutdown (the transport runners enter/exit the lifespan; ``build_app``/
     ``list_tools`` do not, so no client is created until a tool actually runs). The
     process start time is captured at build time so ``get_server_status`` can
@@ -114,13 +124,21 @@ def build_app() -> FastMCP:
     # convention, rooted at ``{data_dir}/backtests``. Construction touches no
     # filesystem (the directory is created on first save).
     backtest_store = BacktestStore()
+    # One process-wide in-memory execution-session registry (Phase 5). It mints
+    # session ids and owns the async run-task lifecycle for paper/testnet sessions;
+    # state is entirely in memory (no filesystem). The lifespan stops any running
+    # sessions on shutdown so no run loop outlives the server.
+    session_registry = SessionRegistry()
 
     @asynccontextmanager
     async def _lifespan(_app: FastMCP) -> AsyncIterator[None]:
-        """Bracket the serving lifetime; close cached adapters on shutdown."""
+        """Bracket the serving lifetime; stop sessions + close adapters on shutdown."""
         try:
             yield
         finally:
+            for info in session_registry.list():
+                with suppress(Exception):
+                    await session_registry.stop(info.session_id)
             await manager.aclose_all()
 
     app = create_fastmcp(
@@ -174,11 +192,13 @@ def build_app() -> FastMCP:
     register_strategy_prompts(app)
     register_backtest_tools(app, strategy_store, store, backtest_store)
     register_backtest_resources(app, backtest_store)
+    register_execution_tools(app, manager, session_registry, strategy_store, store)
+    register_portfolio_tools(app, session_registry)
 
     logger.debug(
         "Built FastMCP app '%s' with admin + market-data + historical + strategy + "
-        "backtest tools, dataset + strategy + backtest resources, and strategy prompts "
-        "registered.",
+        "backtest + execution + portfolio tools, dataset + strategy + backtest "
+        "resources, and strategy prompts registered.",
         SERVER_NAME,
     )
     return app

@@ -239,15 +239,15 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ### Phase 5 — Paper trading & testnet execution
 **Goal:** Run a strategy live against simulated and testnet venues using the same interpreter.
-- [ ] Live data feed via CCXT Pro WebSockets (candles/trades/order book)
-- [ ] Strategy runtime consuming streaming bars through the **same interpreter** as backtest
-- [ ] Paper broker: simulated fills, balances, positions, PnL
-- [ ] Exchange **testnet** execution (Coinbase sandbox / Kraken demo where available)
-- [ ] Tools: `start_session` (paper|testnet), `place_order`, `cancel_order`, `get_open_orders`, `get_positions`, `get_balance`
-- [ ] Tools: `deploy_strategy`, `stop_strategy`, `get_session_status`
-- [ ] Order/position reconciliation; idempotent client order IDs
-- [ ] Portfolio/analytics tools: `get_portfolio`, `get_pnl`, `get_trade_history`
-- **Exit:** Deploy a strategy in paper mode and on Coinbase sandbox; orders/positions/PnL reconcile correctly.
+- [x] Live data feed via CCXT Pro WebSockets (candles/trades/order book) _(`ExchangeAdapter.watch_ohlcv`/`watch_trades`/`watch_order_book` async generators; bounded-backoff reconnection, clean cancellation; streamed bars normalized through the SAME helpers as REST so they feed the one interpreter identically; offline-validated with fakes — a real WS session is deferred to a US-eligible, non-sandboxed host, as this build environment has no exchange network)_
+- [x] Strategy runtime consuming streaming bars through the **same interpreter** as backtest _(`execution/runtime.py`: `StrategyRuntime` drives every decision via `SpecInterpreter.signal_at` over an unbounded full-prefix buffer — reimplements NO signal logic; backtest↔live parity proven 0-mismatch across rule/grid/dca × slippage/funding/sizing/SL-TP, incl. EWM indicators RSI/EMA/MACD)_
+- [x] Paper broker: simulated fills, balances, positions, PnL _(`execution/paper_broker.py`: online stateful pure-simulation broker, byte-identical fill math to the backtest `SimulatedBroker`; balances/positions/portfolio/PnL breakdown — realized/unrealized/fees/funding)_
+- [x] Exchange **testnet** execution (Coinbase sandbox / Kraken demo where available) _(sandbox/testnet wiring via `set_sandbox_mode` through `ExchangeAdapter.create(testnet=...)`, refused (typed error) when unsupported; trade plumbing `create_order`/`cancel_order`/`fetch_order`/`fetch_open_orders`/`fetch_positions`/`fetch_balance` scoped trade-enabled-only; routing gated by `safety.evaluate_order`. Offline-validated with fakes; a real networked sandbox run is deferred to a US-eligible, non-sandboxed host. Owner: exchange-adapter-engineer)_
+- [x] Tools: `start_session` (paper|testnet), `place_order`, `cancel_order`, `get_open_orders`, `get_positions`, `get_balance` _(safe-by-default: `place_order` consults `evaluate_order` before any order — paper simulates, testnet routes only with trade-enabled scope + US-eligible venue + dry-run off, live denied; idempotent client order IDs)_
+- [x] Tools: `deploy_strategy`, `stop_strategy`, `get_session_status` _(deploy binds a `StrategyRuntime`+broker to a session and starts a cancellable run loop over the bar feed (paper: cached-bar replay; testnet: `watch_ohlcv`); 12 execution+portfolio tools, 27→39 total)_
+- [x] Order/position reconciliation; idempotent client order IDs _(`get_open_orders`/`get_positions`/`get_balance` read from the live exchange (testnet) or the paper broker as the reconciliation surface; idempotency wired into `place_order` via `safety.make_client_order_id` (per-session monotonic seq → distinct deterministic COIDs) + `IdempotencyRegistry` retry dedupe. Deeper compare-and-repair reconciliation is a Phase 7 resilience item)_
+- [x] Portfolio/analytics tools: `get_portfolio`, `get_pnl`, `get_trade_history` _(`server/portfolio.py`; typed structured outputs, internally consistent: equity == cash + position_value, total == realized + unrealized)_
+- **Exit:** Deploy a strategy in paper mode and on Coinbase sandbox; orders/positions/PnL reconcile correctly. _(Paper mode validated end-to-end offline — deploy → run loop over cached bars → orders/positions/PnL reconcile, with backtest↔live parity proven 0-mismatch. The Coinbase **sandbox** half is code-complete and offline-validated with fakes; the networked sandbox run is deferred to a US-eligible, non-sandboxed host — same environment constraint as Phase 1.)_
 
 ### Phase 6 — Live trading guardrails (real money — gated)
 **Goal:** Enable real-money execution safely, exchange by exchange.

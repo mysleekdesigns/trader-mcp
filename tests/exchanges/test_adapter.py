@@ -43,12 +43,15 @@ async def _adapter(patch_client: Callable[..., FakeCcxt], **kwargs: object) -> E
 # --------------------------------------------------------------------------- #
 # Read-only / safe-by-default surface
 # --------------------------------------------------------------------------- #
-def test_adapter_exposes_no_order_placement_surface() -> None:
-    """The read-only invariant: no order/trade-routing methods exist on the adapter."""
+def test_adapter_exposes_no_funds_movement_surface() -> None:
+    """Phase 5 still exposes no funds-movement / unscoped order-routing helpers.
+
+    Order plumbing (``create_order``/``cancel_order``) DOES exist as of Phase 5, but
+    it is scope-gated (see ``test_streaming_and_trade.py``). What must never exist is
+    a funds-movement or bespoke order-routing surface.
+    """
     forbidden = (
-        "create_order",
         "place_order",
-        "cancel_order",
         "edit_order",
         "create_market_order",
         "create_limit_order",
@@ -57,6 +60,12 @@ def test_adapter_exposes_no_order_placement_surface() -> None:
     )
     for name in forbidden:
         assert not hasattr(ExchangeAdapter, name), f"adapter must not expose {name}"
+
+
+def test_order_methods_default_to_read_only_scope() -> None:
+    """A bare adapter (no trade-enabled key) carries read-only scope by default."""
+    adapter = ExchangeAdapter(exchange="coinbase", client=object(), testnet=False)
+    assert adapter.key_scope.value == "read_only"
 
 
 # --------------------------------------------------------------------------- #
