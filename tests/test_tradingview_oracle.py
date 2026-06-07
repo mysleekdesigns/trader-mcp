@@ -28,7 +28,7 @@ class _FakeTrade:
     side: str
     entry_time: datetime
     exit_time: datetime
-    pnl_pct: float  # fraction, like the real engine model
+    pnl_pct: float  # PERCENT, like the real engine model (pnl/notional*100)
 
 
 def _t(hour: int) -> datetime:
@@ -124,29 +124,29 @@ def test_bar_index_at_snaps_to_nearest_bar() -> None:
 
 def test_compare_clean_match_has_no_mismatches() -> None:
     ours = [
-        _FakeTrade("long", _t(2), _t(6), 0.10),  # +10% as a fraction
-        _FakeTrade("long", _t(10), _t(14), -0.05),
+        _FakeTrade("long", _t(2), _t(6), 10.0),  # +10% (PERCENT, like the engine)
+        _FakeTrade("long", _t(10), _t(14), -5.0),
     ]
     theirs = parse_tradingview_trades(_CSV_STANDARD)
     assert compare_trades(ours, theirs, _BARS) == []
 
 
 def test_compare_tolerates_one_bar_drift() -> None:
-    ours = [_FakeTrade("long", _t(3), _t(6), 0.10), _FakeTrade("long", _t(10), _t(15), -0.05)]
+    ours = [_FakeTrade("long", _t(3), _t(6), 10.0), _FakeTrade("long", _t(10), _t(15), -5.0)]
     theirs = parse_tradingview_trades(_CSV_STANDARD)
     # entry off by 1 bar, exit off by 1 bar -- both within the default +/-1 tolerance.
     assert compare_trades(ours, theirs, _BARS) == []
 
 
 def test_compare_flags_bar_drift_beyond_tolerance() -> None:
-    ours = [_FakeTrade("long", _t(5), _t(6), 0.10), _FakeTrade("long", _t(10), _t(14), -0.05)]
+    ours = [_FakeTrade("long", _t(5), _t(6), 10.0), _FakeTrade("long", _t(10), _t(14), -5.0)]
     theirs = parse_tradingview_trades(_CSV_STANDARD)
     fields = {m.field for m in compare_trades(ours, theirs, _BARS)}
     assert "entry_bar" in fields  # entry is 3 bars early
 
 
 def test_compare_flags_side_and_return_and_count() -> None:
-    ours = [_FakeTrade("short", _t(2), _t(6), 0.50)]  # wrong side, wildly wrong return, 1 vs 2
+    ours = [_FakeTrade("short", _t(2), _t(6), 50.0)]  # wrong side, wildly wrong return, 1 vs 2
     theirs = parse_tradingview_trades(_CSV_STANDARD)
     fields = {m.field for m in compare_trades(ours, theirs, _BARS)}
     assert {"side", "return_pct", "trade_count"} <= fields
@@ -154,9 +154,9 @@ def test_compare_flags_side_and_return_and_count() -> None:
 
 def test_compare_return_uses_relative_tolerance_for_large_moves() -> None:
     # TradingView +50%; ours +49% -> within 5% relative (2.5pp), should pass.
-    ours = [_FakeTrade("long", _t(2), _t(6), 0.49)]
+    ours = [_FakeTrade("long", _t(2), _t(6), 49.0)]
     theirs = [TvTrade("long", _t(2), _t(6), 100.0, 150.0, 50.0)]
     assert compare_trades(ours, theirs, _BARS) == []
     # ours +40% vs +50% -> 10pp gap, exceeds max(0.5pp, 2.5pp) -> flagged.
-    ours_bad = [_FakeTrade("long", _t(2), _t(6), 0.40)]
+    ours_bad = [_FakeTrade("long", _t(2), _t(6), 40.0)]
     assert any(m.field == "return_pct" for m in compare_trades(ours_bad, theirs, _BARS))

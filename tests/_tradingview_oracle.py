@@ -46,7 +46,7 @@ class _OurTrade(Protocol):
     @property
     def exit_time(self) -> datetime: ...
     @property
-    def pnl_pct(self) -> float: ...  # fraction of entry notional (e.g. 0.0238 == +2.38%)
+    def pnl_pct(self) -> float: ...  # PERCENT of entry notional (e.g. 2.38 == +2.38%)
 
 
 @dataclass(frozen=True)
@@ -54,8 +54,8 @@ class TvTrade:
     """One round-trip trade parsed from a TradingView List-of-Trades export.
 
     ``pnl_pct`` is stored as a PERCENT (TradingView's "Profit %" column, e.g. ``2.38``),
-    not a fraction -- :func:`compare_trades` scales our fractional ``pnl_pct`` by 100 before
-    comparing so the two are apples-to-apples.
+    matching the engine's ``SimulatedTrade.pnl_pct`` units so :func:`compare_trades`
+    compares them directly.
     """
 
     side: str  # "long" | "short"
@@ -262,7 +262,8 @@ def compare_trades(
     percentage points. A trade-count difference beyond ``count_tol`` is itself a mismatch
     (the surplus trades are then unpaired and reported).
 
-    Our ``pnl_pct`` is a FRACTION; TradingView's is a PERCENT -- ours is scaled by 100 here.
+    Both ``pnl_pct`` values are PERCENT (engine ``SimulatedTrade.pnl_pct`` is
+    ``pnl / notional * 100``; TradingView's "Profit %") -- compared directly.
     """
     mismatches: list[TradeMismatch] = []
 
@@ -287,11 +288,12 @@ def compare_trades(
         if abs(o_exit - t_exit) > bar_tol:
             mismatches.append(TradeMismatch(i, "exit_bar", o_exit, t_exit))
 
-        ours_pct = o.pnl_pct * 100.0
+        # Both are PERCENT (engine SimulatedTrade.pnl_pct == pnl/notional*100; TradingView
+        # "Profit %") -- compare directly, no scaling.
         tol = max(return_tol_pp, return_rel_tol * abs(t.pnl_pct))
-        if abs(ours_pct - t.pnl_pct) > tol:
+        if abs(o.pnl_pct - t.pnl_pct) > tol:
             mismatches.append(
-                TradeMismatch(i, "return_pct", round(ours_pct, 4), round(t.pnl_pct, 4))
+                TradeMismatch(i, "return_pct", round(o.pnl_pct, 4), round(t.pnl_pct, 4))
             )
 
     return mismatches
