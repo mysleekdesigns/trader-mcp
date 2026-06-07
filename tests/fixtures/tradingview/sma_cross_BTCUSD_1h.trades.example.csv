@@ -1,0 +1,5 @@
+Trade #,Type,Signal,Date/Time,Price USD,Contracts,Profit USD,Profit %,Cumulative profit USD,Cumulative profit %
+1,Entry Long,Long,2024-01-02 06:00,44100.00,0.215,,,,
+1,Exit Long,Long,2024-01-05 14:00,45500.00,0.215,295.10,3.17,295.10,3.17
+2,Entry Long,Long,2024-01-09 03:00,46200.00,0.221,,,,
+2,Exit Long,Long,2024-01-11 19:00,45050.00,0.221,-263.65,-2.49,31.45,0.59

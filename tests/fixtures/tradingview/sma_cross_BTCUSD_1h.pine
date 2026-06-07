@@ -1,0 +1,46 @@
+//@version=5
+// ─────────────────────────────────────────────────────────────────────────────
+// trader-mcp SMA-cross cross-validation mirror (PRD §6 Phase 8 oracle).
+//
+// This Pine strategy MUST stay in lock-step with _sma_cross_spec() in
+//   tests/test_crossvalidate_tradingview.py
+// Parameters:
+//   fast SMA length      = 10
+//   slow SMA length      = 30
+//   side                 = long only
+//   entry                = crossover(fast, slow)
+//   exit                 = crossunder(fast, slow)
+//   position size        = 95% of equity   (default_qty_value=95)
+//   taker commission     = 0.06%           (commission_value=0.06  == engine Fees.taker 0.0006)
+//
+// Strategy Tester settings to match the engine's "decide on close(t), fill open(t+1)" rule:
+//   • process_orders_on_close = false  (default — fills happen at the NEXT bar's open)
+//   • calc_on_every_tick      = false  (recalc on bar close only; no intrabar repaint)
+//   • pyramiding              = 0      (one position at a time, like the engine)
+//   • slippage                = 0      (engine config uses slippage_pct=0)
+//
+// Chart: COINBASE:BTCUSD, 1h, pinned to the window documented in this dir's README.md.
+// Export: Strategy Tester ▸ List of Trades ▸ ⤓ (CSV) ▸ save as sma_cross_BTCUSD_1h.trades.csv
+// ─────────────────────────────────────────────────────────────────────────────
+strategy("trader-mcp SMA cross xval", overlay=true,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=95,
+     commission_type=strategy.commission.percent, commission_value=0.06,
+     pyramiding=0, process_orders_on_close=false, calc_on_every_tick=false,
+     slippage=0, initial_capital=10000)
+
+fastLen = input.int(10, "Fast SMA length")
+slowLen = input.int(30, "Slow SMA length")
+
+fast = ta.sma(close, fastLen)
+slow = ta.sma(close, slowLen)
+
+enterLong = ta.crossover(fast, slow)
+exitLong  = ta.crossunder(fast, slow)
+
+if enterLong
+    strategy.entry("Long", strategy.long)
+if exitLong
+    strategy.close("Long")
+
+plot(fast, "Fast SMA", color=color.aqua)
+plot(slow, "Slow SMA", color=color.orange)
