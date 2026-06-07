@@ -39,12 +39,19 @@ path. Resource registration goes through the FastMCP instance (re-exported behin
 
 from __future__ import annotations
 
+import json
+
+from pydantic import BaseModel
+
 from trader_mcp import data
 from trader_mcp.data import DatasetInfo, DatasetKey, OHLCVStore
 from trader_mcp.data.store import sanitize_symbol
+from trader_mcp.engine import BacktestReport, BacktestStore
 from trader_mcp.errors import ValidationError
 from trader_mcp.server._sdk import FastMCP
 from trader_mcp.server.schemas import (
+    BacktestCatalogEntry,
+    BacktestCatalogResult,
     CatalogEntry,
     CatalogResult,
     StrategyCatalogEntry,
@@ -67,6 +74,19 @@ STRATEGY_CATALOG_URI = "strategy://catalog"
 #: strategy name (lowercase, hyphenated -- the on-disk key), e.g.
 #: ``strategy://ma-cross-btc``.
 STRATEGY_URI_TEMPLATE = "strategy://{name}"
+
+#: URI of the saved-backtest-report catalog resource (Phase 4).
+BACKTEST_CATALOG_URI = "backtest://catalog"
+
+#: URI template for one saved backtest report's full JSON. ``{report_id}`` is the
+#: deterministic report id (already URI-safe -- a hex hash), e.g.
+#: ``backtest://a1b2c3d4``.
+BACKTEST_URI_TEMPLATE = "backtest://{report_id}"
+
+
+def backtest_uri(report_id: str) -> str:
+    """Return the resolvable per-report resource URI for ``report_id``."""
+    return f"backtest://{report_id}"
 
 
 def strategy_uri(info: StrategyInfo) -> str:
@@ -213,3 +233,88 @@ def register_strategy_resources(app: FastMCP, store: StrategyStore) -> None:
         canonical = _resolve_strategy_name(store, name)
         spec = store.load(canonical)
         return spec.model_dump_json()
+
+
+def _roundtrippable_json(model: BaseModel) -> str:
+    """Serialize ``model`` to JSON that survives a re-parse, preserving ``inf``/``nan``.
+
+    Pydantic's :meth:`~pydantic.BaseModel.model_dump_json` emits JSON ``null`` for a
+    non-finite float (e.g. a ``profit_factor`` of ``inf`` -- a documented, meaningful
+    value: wins but no losses), which then fails to re-validate as a required
+    ``float``. Routing through stdlib :func:`json.dumps` over ``model_dump(mode="json")``
+    instead emits the ``Infinity``/``-Infinity``/``NaN`` literals, which re-parse back
+    to floats -- exactly how :class:`~trader_mcp.engine.BacktestStore` persists reports
+    so they round-trip. Keeps the served JSON consistent with the on-disk form.
+    """
+    return json.dumps(model.model_dump(mode="json"))
+
+
+def _catalog_entry(report: BacktestReport) -> BacktestCatalogEntry:
+    """Flatten a :class:`BacktestReport` into a URI-tagged catalog summary entry."""
+    return BacktestCatalogEntry(
+        report_id=report.report_id,
+        strategy_name=report.strategy_name,
+        exchange=report.exchange,
+        symbol=report.symbol,
+        timeframe=report.timeframe,
+        start=report.start,
+        end=report.end,
+        bars=report.bars,
+        final_equity=report.final_equity,
+        total_return_pct=report.metrics.total_return_pct,
+        sharpe=report.metrics.sharpe,
+        max_drawdown_pct=report.metrics.max_drawdown_pct,
+        trade_count=report.metrics.trade_count,
+        created=report.created,
+        resource_uri=backtest_uri(report.report_id),
+    )
+
+
+def register_backtest_resources(app: FastMCP, store: BacktestStore) -> None:
+    """Register the Phase 4 backtest-report resources on ``app``.
+
+    Both resource callables close over the single process-wide ``store`` (the local
+    backtest-report file cache). This is the only place these resources are
+    registered; ``build_app`` invokes it.
+
+    Args:
+        app: The FastMCP application to register the resources on.
+        store: The shared local backtest-report store the resources read from.
+    """
+
+    @app.resource(
+        BACKTEST_CATALOG_URI,
+        name="backtest-catalog",
+        title="Saved backtest report catalog",
+        description=(
+            "JSON catalog of every saved backtest report (strategy, market, window, and "
+            "headline metrics -- final equity, total return, Sharpe, max drawdown, trade "
+            "count) with a resolvable per-report resource URI for each "
+            "(backtest://{report_id})."
+        ),
+        mime_type="application/json",
+    )
+    def backtest_catalog() -> str:
+        """Return the saved-report catalog as ``BacktestCatalogResult`` JSON (URI-tagged)."""
+        entries = [_catalog_entry(store.load(rid)) for rid in store.list_ids()]
+        return _roundtrippable_json(BacktestCatalogResult(reports=entries, count=len(entries)))
+
+    @app.resource(
+        BACKTEST_URI_TEMPLATE,
+        name="backtest-report",
+        title="Saved backtest report",
+        description=(
+            "Full saved BacktestReport JSON for one report: metrics, every trade, the "
+            "equity curve, and the run config. The report_id path segment is the report's "
+            "deterministic id, e.g. 'backtest://a1b2c3d4'."
+        ),
+        mime_type="application/json",
+    )
+    def backtest_report(report_id: str) -> str:
+        """Return one saved backtest report's full ``BacktestReport`` JSON.
+
+        Serialized via :func:`_roundtrippable_json` so a non-finite metric (an ``inf``
+        ``profit_factor`` -- wins, no losses) survives a client re-parse into a
+        ``BacktestReport`` instead of becoming a ``null`` that fails validation.
+        """
+        return _roundtrippable_json(store.load(report_id))

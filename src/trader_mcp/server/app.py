@@ -15,12 +15,17 @@ Builds the :class:`FastMCP` server (via the SDK-isolation wrapper in
       strategy MCP resources (via
       :func:`trader_mcp.server.resources.register_strategy_resources`), and the
       guided strategy-design MCP prompts (via
-      :func:`trader_mcp.server.prompts.register_strategy_prompts`).
+      :func:`trader_mcp.server.prompts.register_strategy_prompts`);
+    * the Phase 4 backtest & optimize tools (via
+      :func:`trader_mcp.server.backtest.register_backtest_tools`) and the saved-
+      backtest-report MCP resources (via
+      :func:`trader_mcp.server.resources.register_backtest_resources`).
 
 ``build_app`` is the single registration point. It constructs exactly one
 process-wide :class:`~trader_mcp.exchanges.ExchangeManager`, one process-wide
-:class:`~trader_mcp.data.OHLCVStore`, and one process-wide
-:class:`~trader_mcp.strategy.StrategyStore`, and wires a FastMCP lifespan that
+:class:`~trader_mcp.data.OHLCVStore`, one process-wide
+:class:`~trader_mcp.strategy.StrategyStore`, and one process-wide
+:class:`~trader_mcp.engine.BacktestStore`, and wires a FastMCP lifespan that
 closes the manager's cached adapters on shutdown -- this keeps the SDK behind
 ``_sdk`` (the lifespan is passed through ``create_fastmcp``). The stores use
 short-lived file/DuckDB handles (no persistent connection), so they need no
@@ -37,13 +42,19 @@ from typing import Literal
 
 from trader_mcp import __version__
 from trader_mcp.data import OHLCVStore
+from trader_mcp.engine import BacktestStore
 from trader_mcp.exchanges import ExchangeManager
 from trader_mcp.logging_config import get_logger
 from trader_mcp.server._sdk import FastMCP, create_fastmcp
+from trader_mcp.server.backtest import register_backtest_tools
 from trader_mcp.server.historical import register_data_tools
 from trader_mcp.server.market_data import register_market_data_tools
 from trader_mcp.server.prompts import register_strategy_prompts
-from trader_mcp.server.resources import register_dataset_resources, register_strategy_resources
+from trader_mcp.server.resources import (
+    register_backtest_resources,
+    register_dataset_resources,
+    register_strategy_resources,
+)
 from trader_mcp.server.schemas import HealthCheckResult, ServerStatusResult
 from trader_mcp.server.strategy import register_strategy_tools
 from trader_mcp.strategy import StrategyStore
@@ -73,12 +84,14 @@ def build_app() -> FastMCP:
     """Build and return the configured FastMCP application.
 
     Registers the Phase 0 admin tools, the Phase 1 market-data tools, the Phase 2
-    historical data-sync tools + cached-dataset resources, and the Phase 3
-    strategy-authoring tools + saved-strategy resources + guided design prompts.
+    historical data-sync tools + cached-dataset resources, the Phase 3
+    strategy-authoring tools + saved-strategy resources + guided design prompts,
+    and the Phase 4 backtest & optimize tools + saved-backtest-report resources.
     Constructs exactly one process-wide
     :class:`~trader_mcp.exchanges.ExchangeManager`, one
-    :class:`~trader_mcp.data.OHLCVStore`, and one
-    :class:`~trader_mcp.strategy.StrategyStore`, closed over by the
+    :class:`~trader_mcp.data.OHLCVStore`, one
+    :class:`~trader_mcp.strategy.StrategyStore`, and one
+    :class:`~trader_mcp.engine.BacktestStore`, closed over by the
     tool/resource/prompt callables, and wires a FastMCP lifespan that calls
     ``manager.aclose_all()`` on
     shutdown (the transport runners enter/exit the lifespan; ``build_app``/
@@ -97,6 +110,10 @@ def build_app() -> FastMCP:
     # One process-wide local strategy store (Phase 3); same data_dir convention,
     # rooted at ``{data_dir}/strategies``. Construction touches no filesystem.
     strategy_store = StrategyStore()
+    # One process-wide local backtest-report store (Phase 4); same data_dir
+    # convention, rooted at ``{data_dir}/backtests``. Construction touches no
+    # filesystem (the directory is created on first save).
+    backtest_store = BacktestStore()
 
     @asynccontextmanager
     async def _lifespan(_app: FastMCP) -> AsyncIterator[None]:
@@ -155,10 +172,13 @@ def build_app() -> FastMCP:
     register_strategy_tools(app, strategy_store)
     register_strategy_resources(app, strategy_store)
     register_strategy_prompts(app)
+    register_backtest_tools(app, strategy_store, store, backtest_store)
+    register_backtest_resources(app, backtest_store)
 
     logger.debug(
-        "Built FastMCP app '%s' with admin + market-data + historical + strategy tools, "
-        "dataset + strategy resources, and strategy prompts registered.",
+        "Built FastMCP app '%s' with admin + market-data + historical + strategy + "
+        "backtest tools, dataset + strategy + backtest resources, and strategy prompts "
+        "registered.",
         SERVER_NAME,
     )
     return app

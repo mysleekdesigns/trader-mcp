@@ -34,6 +34,10 @@ dependencies = [
     "pandas-ta>=0.4; python_version >= '3.12'",
     "pydantic>=2",
     "pydantic-settings>=2",
+    # Pure-Python, numpy>=2 compatible; drives optimize_strategy's parameter search.
+    "optuna>=3.6",
+    # quantstats: optional HTML tear sheet only (engine computes metrics natively).
+    "quantstats>=0.0.64",
 ]
 
 # Optional extras. ``socks`` enables a SOCKS proxy for the CCXT (aiohttp) client
@@ -41,6 +45,10 @@ dependencies = [
 # HTTPS proxying needs no extra dependency (aiohttp supports it natively).
 [project.optional-dependencies]
 socks = ["aiohttp_socks"]
+# vectorbt: optional sweep accelerator. vectorbt 1.x (with numba >=0.61) supports
+# numpy>=2; optimize_strategy still runs natively via Optuna by default, so this
+# is an opt-in extra (`uv sync --extra vbt`).
+vbt = ["vectorbt"]
 
 [project.urls]
 Homepage = "https://github.com/mysleekdesigns/trader-mcp"
@@ -61,6 +69,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=5",
     "pre-commit>=3.8",
+    # backtesting.py: used only by the cross-validation/parity tests, not runtime.
+    "backtesting>=0.3.3",
 ]
 
 [build-system]
@@ -139,7 +149,15 @@ no_implicit_optional = true
 
 [[tool.mypy.overrides]]
 # ccxt ships no type stubs / py.typed marker; mcp SDK is isolated behind _sdk.py.
-module = ["mcp.*", "ccxt.*"]
+# optuna/quantstats/backtesting/vectorbt ship no or partial stubs.
+module = [
+    "mcp.*",
+    "ccxt.*",
+    "optuna.*",
+    "quantstats.*",
+    "backtesting.*",
+    "vectorbt.*",
+]
 ignore_missing_imports = true
 
 # ─────────────────────────────────────────────────────────────

@@ -212,3 +212,56 @@ class StrategyCatalogResult(_StrictModel):
         description="Every saved strategy with its resolvable per-strategy resource URI."
     )
     count: int = Field(description="Number of saved strategies.")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4 backtest-catalog resource models
+#
+# The ``backtest://catalog`` MCP resource lists every saved backtest report with a
+# resolvable per-report resource URI plus a handful of headline metric fields so a
+# client can browse/pick a report without loading each full document. A saved
+# report is addressed by its deterministic ``report_id`` (a hash of spec + data
+# window + config), so the per-report URI is simply ``backtest://{report_id}``.
+# Mirrors the dataset-/strategy-catalog idiom (a richer superset of a list tool),
+# but here the catalog is a *resource only* -- there is no ``list_backtests`` tool.
+# The engine's ``BacktestReport`` is returned directly by the run/get tools.
+# --------------------------------------------------------------------------- #
+class BacktestCatalogEntry(_StrictModel):
+    """A backtest-catalog entry: one saved report's identity, headline metrics, and URI.
+
+    The summary fields are a flattened, browse-friendly subset of the full
+    :class:`~trader_mcp.engine.BacktestReport` (which the per-report
+    ``backtest://{report_id}`` resource serves in full). Percentages are in percent
+    units (e.g. ``12.5`` == 12.5%), matching :class:`~trader_mcp.engine.BacktestMetrics`.
+    """
+
+    report_id: str = Field(description="Deterministic id of the saved report (the on-disk key).")
+    strategy_name: str = Field(description="Name of the strategy that was backtested.")
+    exchange: str = Field(description="Exchange the backtested data came from.")
+    symbol: str = Field(description="Canonical symbol the backtest ran on.")
+    timeframe: str = Field(description="Bar timeframe the backtest ran on (e.g. '1h').")
+    start: datetime | None = Field(
+        default=None, description="Open time of the first backtested bar (None if empty)."
+    )
+    end: datetime | None = Field(
+        default=None, description="Open time of the last backtested bar (None if empty)."
+    )
+    bars: int = Field(description="Number of bars in the backtest window.")
+    final_equity: float = Field(description="Ending equity in quote currency.")
+    total_return_pct: float = Field(description="Total return over the window, in percent.")
+    sharpe: float = Field(description="Annualized Sharpe ratio (0.0 when undefined).")
+    max_drawdown_pct: float = Field(description="Maximum peak-to-trough drawdown, in percent.")
+    trade_count: int = Field(description="Number of closed round-trip trades.")
+    created: datetime = Field(description="UTC time the report was produced.")
+    resource_uri: str = Field(
+        description="Resolvable per-report resource URI, e.g. 'backtest://<report_id>'."
+    )
+
+
+class BacktestCatalogResult(_StrictModel):
+    """Payload of the ``backtest://catalog`` resource: URI-tagged saved backtest reports."""
+
+    reports: list[BacktestCatalogEntry] = Field(
+        description="Every saved backtest report with headline metrics and its resolvable URI."
+    )
+    count: int = Field(description="Number of saved backtest reports.")

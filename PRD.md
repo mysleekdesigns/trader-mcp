@@ -227,15 +227,15 @@ fees: {taker: 0.00055, maker: 0.0002}
 
 ### Phase 4 — Backtesting engine & analytics
 **Goal:** Trustworthy backtests on real data with clear, structured reports.
-- [ ] Event-driven interpreter executing the spec bar-by-bar (the shared backtest↔live code path)
-- [ ] Realistic fills: taker/maker fees, configurable slippage, **funding for perps**, leverage/margin
-- [ ] Metrics: total/annualized return (CAGR), Sharpe, Sortino, max drawdown, win rate, profit factor, exposure, trade count
-- [ ] `quantstats` tear sheet generation; report as structured output + saved resource
-- [ ] Tools: `run_backtest`, `get_backtest_report`, `compare_backtests`
-- [ ] `optimize_strategy`: parameter sweep + **walk-forward** (vectorbt/Optuna); look-ahead/leakage guards
-- [ ] Cross-validate engine vs `backtesting.py` on reference strategies (parity test)
-- [ ] Deterministic/reproducible runs (seeded, pinned data snapshot)
-- **Exit:** Backtest a template strategy on cached Coinbase data; metrics match the cross-validation engine within tolerance; report returned to the AI.
+- [x] Event-driven interpreter executing the spec bar-by-bar (the shared backtest↔live code path) _(`engine/interpreter.py`: one `SpecInterpreter` with a single signal core; `signal_at(window)` derives from the same vectorized `signals(df)` — the live per-bar path == backtest path, proven 0-mismatch across all templates)_
+- [x] Realistic fills: taker/maker fees, configurable slippage, **funding for perps**, leverage/margin _(`engine/broker.py`: pure in-memory `SimulatedBroker`, next-bar-open fills, intrabar SL/TP, flat-rate perp funding, leverage-scaled notional)_
+- [x] Metrics: total/annualized return (CAGR), Sharpe, Sortino, max drawdown, win rate, profit factor, exposure, trade count _(`engine/metrics.py`, computed natively — no quantstats dependency for metrics)_
+- [x] `quantstats` tear sheet generation; report as structured output + saved resource _(`engine/tearsheet.py` lazy/graceful HTML; reports persisted by `BacktestStore` and exposed as `backtest://catalog` + `backtest://{report_id}` resources)_
+- [x] Tools: `run_backtest`, `get_backtest_report`, `compare_backtests` _(+ `optimize_strategy`, `generate_tearsheet`; 5 backtest tools, 27 total)_
+- [x] `optimize_strategy`: parameter sweep + **walk-forward** (vectorbt/Optuna); look-ahead/leakage guards _(`engine/optimize.py`: native Optuna source-of-truth, vectorbt optional `vbt` extra; walk-forward with disjoint train/test, indicators recomputed per window)_
+- [x] Cross-validate engine vs `backtesting.py` on reference strategies (parity test) _(`tests/test_crossvalidate_backtesting.py`: SMA-cross vs backtesting.py 0.6.5 matched on commission/next-open fills — final-equity drift 0.28%, total-return 0.70%, both ≤1%)_
+- [x] Deterministic/reproducible runs (seeded, pinned data snapshot) _(stable `report_id` hash of spec+config+bars excluding wall-clock; seeded Optuna)_
+- **Exit:** Backtest a template strategy on cached Coinbase data; metrics match the cross-validation engine within tolerance; report returned to the AI. _(Validated **offline**: backtests run through the real spec→interpreter→broker→metrics path on cached data via `OHLCVStore`, cross-validated against `backtesting.py` within tolerance, with the first-class backtest↔live parity suite green. A networked **Coinbase** sync to feed real cached bars is the only deferred step — same US-eligible, non-sandboxed host caveat as Phases 1–2. Owner: backtest-engine-engineer.)_
 
 ### Phase 5 — Paper trading & testnet execution
 **Goal:** Run a strategy live against simulated and testnet venues using the same interpreter.
