@@ -195,15 +195,19 @@ def optimize_strategy(
     backend: str = "native"
     note: str | None = None
     if use_vectorbt:
-        try:
-            import vectorbt  # noqa: F401  (presence probe only; native remains truth)
+        # Presence probe only -- the native+Optuna path stays the source of truth.
+        # Use importlib.find_spec rather than a static ``import vectorbt`` so the
+        # optional accelerator (the ``vbt`` extra, absent from the default and CI
+        # environments) does not trip the type checker's missing-import check.
+        import importlib.util
 
+        if importlib.util.find_spec("vectorbt") is not None:
             backend = "vectorbt"
             note = (
                 "vectorbt accelerator requested; scores are still recomputed on the "
                 "native engine (source of truth)."
             )
-        except ImportError:
+        else:
             note = "vectorbt requested but not installed; used the native+Optuna path."
 
     best_params, best_value, trials = _sweep(spec, bars, params, objective, n_trials, cfg)
